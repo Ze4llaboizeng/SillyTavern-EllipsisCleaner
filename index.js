@@ -404,12 +404,22 @@
       menu.style.top = '100%';
       menu.style.marginBottom = '';
       menu.style.marginTop = '4px';
-      const rect = menu.getBoundingClientRect();
+      let rect = menu.getBoundingClientRect();
       if (rect.bottom > window.innerHeight) {
         menu.style.top = 'auto';
         menu.style.bottom = '100%';
         menu.style.marginTop = '';
         menu.style.marginBottom = '4px';
+        rect = menu.getBoundingClientRect();
+      }
+      if (rect.left < 0) {
+        menu.style.right = 'auto';
+        menu.style.left = '0';
+        rect = menu.getBoundingClientRect();
+      }
+      if (rect.right > window.innerWidth) {
+        menu.style.left = 'auto';
+        menu.style.right = '0';
       }
     }
     function hideMenu() {
