@@ -568,7 +568,7 @@
     if (typeof document === 'undefined') return;
     const initUI = () => {
       addUI();
-      hookOutgoingInput(true);
+      hookOutgoingInput();
       if (ensureSettings().autoRemove) removeEllipsesFromChat();
     };
     document.addEventListener('DOMContentLoaded', initUI);
