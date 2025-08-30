@@ -532,20 +532,10 @@
       })();
     });
 
-    eventSource.on?.(event_types.MESSAGE_RECEIVED, (p) => {
+    eventSource.on?.(event_types.MESSAGE_RECEIVED, () => {
       (async () => {
-        const st = ensureSettings();
-        if (!p || !st.autoRemove) return;
-        let removed = 0;
-        if (typeof p.message === 'string') { const r = cleanOutsideCode(p.message, st.treatTwoDots, st.preserveSpace); p.message = r.text; removed += r.removed; }
-        if (typeof p.mes === 'string')     { const r = cleanOutsideCode(p.mes,     st.treatTwoDots, st.preserveSpace); p.mes     = r.text; removed += r.removed; }
-        if (removed) {
-          await refreshChatUIAndWait(() => {
-            const last = document.querySelector('.mes:last-child .mes_text, .message:last-child .message-text, .chat-message:last-child, .mes_markdown:last-child, .markdown:last-child');
-            window.RemoveEllipsis.ui.overlayHighlight(last);
-            window.RemoveEllipsis.ui.toast(`ลบ … ${removed}`);
-          });
-        }
+        if (!ensureSettings().autoRemove) return;
+        await removeEllipsesFromChat();
       })();
     });
 
@@ -564,13 +554,26 @@
   }
 
   function wireWithFallback() {
-    const { addUI, hookOutgoingInput } = window.RemoveEllipsis.ui;
+    const { addUI, hookOutgoingInput, removeFromChat: removeEllipsesFromChat } = window.RemoveEllipsis.ui;
     if (typeof document === 'undefined') return;
+
+    const watchIncoming = () => {
+      const sc = document.querySelector('#chat, .chat, .dialogues');
+      if (sc && !watchIncoming._observer) {
+        const mo = new MutationObserver(() => {
+          if (ensureSettings().autoRemove) removeEllipsesFromChat();
+        });
+        mo.observe(sc, { childList: true });
+        watchIncoming._observer = mo;
+      }
+    }
+ 
     const initUI = () => {
       addUI();
       hookOutgoingInput();
       if (ensureSettings().autoRemove) removeEllipsesFromChat();
     };
+
     document.addEventListener('DOMContentLoaded', initUI);
     setTimeout(initUI, 800);
   }
