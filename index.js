@@ -228,21 +228,29 @@
     }
     return r.removed;
   }
-  function hookOutgoingInput() {
+  function hookOutgoingInput(autoChatCleanup = false) {
     if (hookOutgoingInput._done || typeof document === 'undefined') return; hookOutgoingInput._done = true;
 
     const form = document.querySelector('form.send-form, #send_form, form');
     if (form) form.addEventListener('submit', async () => {
       const n = sanitizeCurrentInput();
-      await refreshChatUIAndWait();
-      if (n) toast(`ลบ … ${n}`);
+      if (autoChatCleanup && ensureSettings().autoRemove) {
+        setTimeout(removeEllipsesFromChat, 0);
+      } else {
+        await refreshChatUIAndWait();
+        if (n) toast(`ลบ … ${n}`);
+      }
     }, true);
 
     const btn = document.querySelector('.send-button, button[type="submit"], #send_but, .st-send');
     if (btn) btn.addEventListener('mousedown', async () => {
       const n = sanitizeCurrentInput();
-      await refreshChatUIAndWait();
-      if (n) toast(`ลบ … ${n}`);
+      if (autoChatCleanup && ensureSettings().autoRemove) {
+        setTimeout(removeEllipsesFromChat, 0);
+      } else {
+        await refreshChatUIAndWait();
+        if (n) toast(`ลบ … ${n}`);
+      }
     }, true);
 
     const input = getInputEl();
@@ -250,8 +258,12 @@
       const isEnter = e.key==='Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !e.isComposing;
       if (isEnter) {
         const n = sanitizeCurrentInput();
-        await refreshChatUIAndWait();
-        if (n) toast(`ลบ … ${n}`);
+        if (autoChatCleanup && ensureSettings().autoRemove) {
+          setTimeout(removeEllipsesFromChat, 0);
+        } else {
+          await refreshChatUIAndWait();
+          if (n) toast(`ลบ … ${n}`);
+        }
       }
     }, true);
 
@@ -503,7 +515,7 @@
 
     const { cleanOutsideCode } = window.RemoveEllipsis.cleaner;
     const { refreshChatUIAndWait } = window.RemoveEllipsis.refresh;
-    const { addUI, hookOutgoingInput } = window.RemoveEllipsis.ui;
+    const { addUI, hookOutgoingInput, removeFromChat: removeEllipsesFromChat } = window.RemoveEllipsis.ui;
 
     eventSource.on?.(event_types.MESSAGE_SENT, (p) => {
       (async () => {
@@ -512,7 +524,11 @@
         let removed = 0;
         if (typeof p.message === 'string') { const r = cleanOutsideCode(p.message, st.treatTwoDots, st.preserveSpace); p.message = r.text; removed += r.removed; }
         if (typeof p.mes === 'string')     { const r = cleanOutsideCode(p.mes,     st.treatTwoDots, st.preserveSpace); p.mes     = r.text; removed += r.removed; }
-        if (removed) await refreshChatUIAndWait(() => window.RemoveEllipsis.ui.toast(`ลบ … ${removed}`));
+        if (st.autoRemove) {
+          await removeEllipsesFromChat();
+        } else if (removed) {
+          await refreshChatUIAndWait(() => window.RemoveEllipsis.ui.toast(`ลบ … ${removed}`));
+        }
       })();
     });
 
