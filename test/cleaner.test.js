@@ -16,5 +16,17 @@ assert.deepStrictEqual(
   { text: 'Hello world `code...` ```block...```', removed: 3 }
 );
 
+// Should preserve spacing when removing ellipsis by default
+assert.deepStrictEqual(
+  cleanOutsideCode('Hello...World', true),
+  { text: 'Hello World', removed: 3 }
+);
+
+// Should allow removing ellipsis without inserting space
+assert.deepStrictEqual(
+  cleanOutsideCode('Hello...World', true, false),
+  { text: 'HelloWorld', removed: 3 }
+);
+
 console.log('Tests passed');
 

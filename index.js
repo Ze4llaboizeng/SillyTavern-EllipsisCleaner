@@ -6,7 +6,7 @@
 
   // ---------- Core & Namespace ----------
   const MODULE = 'removeEllipsisExt';
-  const DEFAULTS = { autoRemove: false, treatTwoDots: true, highlight: 'overlay' };
+  const DEFAULTS = { autoRemove: false, treatTwoDots: true, highlight: 'overlay', preserveSpace: true };
 
   function getCtx() {
     try { return window.SillyTavern?.getContext?.() || null; } catch (_) { return null; }
@@ -29,7 +29,7 @@
   });
 
   // ---------- Cleaner ----------
-  function cleanOutsideCode(text, treatTwoDots) {
+  function cleanOutsideCode(text, treatTwoDots, preserveSpace = true) {
     if (typeof text !== 'string' || !text) return { text, removed: 0 };
 
     const blockRegex = /```[\s\S]*?```/g;
@@ -43,7 +43,16 @@
     const pattern = treatTwoDots ? /(?<!\d)\.{2,}(?!\d)|…/g : /(?<!\d)\.{3,}(?!\d)|…/g;
 
     let removed = 0;
-    const cleaned = sk2.replace(pattern, m => { removed += m.length; return ''; });
+    const cleaned = sk2.replace(pattern, (m, offset, str) => {
+      removed += m.length;
+      if (!preserveSpace) return '';
+      const prev = str[offset - 1];
+      const next = str[offset + m.length];
+      const hasSpaceBefore = prev === undefined ? true : /\s/.test(prev);
+      const hasSpaceAfter = next === undefined ? true : /\s/.test(next);
+      if (hasSpaceBefore || hasSpaceAfter) return '';
+      return ' ';
+    });
 
     let restored = cleaned.replace(/@@INLINE(\d+)@@/g, (_,i)=>inlines[i]);
     restored = restored.replace(/@@BLOCK(\d+)@@/g,  (_,i)=>blocks[i]);
@@ -55,14 +64,14 @@
     const st = ensureSettings();
     let total = 0;
     if (typeof msg.mes === 'string') {
-      const r = cleanOutsideCode(msg.mes, st.treatTwoDots); msg.mes = r.text; total += r.removed;
+      const r = cleanOutsideCode(msg.mes, st.treatTwoDots, st.preserveSpace); msg.mes = r.text; total += r.removed;
     }
     if (msg.extra) {
       if (typeof msg.extra.display_text === 'string') {
-        const r = cleanOutsideCode(msg.extra.display_text, st.treatTwoDots); msg.extra.display_text = r.text; total += r.removed;
+        const r = cleanOutsideCode(msg.extra.display_text, st.treatTwoDots, st.preserveSpace); msg.extra.display_text = r.text; total += r.removed;
       }
       if (typeof msg.extra.original === 'string') {
-        const r = cleanOutsideCode(msg.extra.original, st.treatTwoDots); msg.extra.original = r.text; total += r.removed;
+        const r = cleanOutsideCode(msg.extra.original, st.treatTwoDots, st.preserveSpace); msg.extra.original = r.text; total += r.removed;
       }
     }
     return total;
@@ -111,7 +120,7 @@
                 p = p.parentNode;
               }
               if (skip) continue;
-              const r = cleanOutsideCode(tn.nodeValue, st.treatTwoDots);
+              const r = cleanOutsideCode(tn.nodeValue, st.treatTwoDots, st.preserveSpace);
               if (r.removed) tn.nodeValue = r.text;
             }
           });
@@ -209,7 +218,7 @@
     if (!el) return 0;
     const st = ensureSettings();
     const val = ('value' in el) ? el.value : el.textContent;
-    const r = cleanOutsideCode(val, st.treatTwoDots);
+    const r = cleanOutsideCode(val, st.treatTwoDots, st.preserveSpace);
     if (r.removed > 0) {
       if ('value' in el) el.value = r.text; else el.textContent = r.text;
       const ev = { bubbles: true, cancelable: false };
@@ -281,10 +290,10 @@
     let count = 0;
     const st = ensureSettings();
     if (ctx?.chat?.forEach) ctx.chat.forEach(msg => {
-      if (typeof msg.mes === 'string') count += cleanOutsideCode(msg.mes, st.treatTwoDots).removed;
+      if (typeof msg.mes === 'string') count += cleanOutsideCode(msg.mes, st.treatTwoDots, st.preserveSpace).removed;
       if (msg.extra) {
-        if (typeof msg.extra.display_text === 'string') count += cleanOutsideCode(msg.extra.display_text, st.treatTwoDots).removed;
-        if (typeof msg.extra.original === 'string') count += cleanOutsideCode(msg.extra.original, st.treatTwoDots).removed;
+        if (typeof msg.extra.display_text === 'string') count += cleanOutsideCode(msg.extra.display_text, st.treatTwoDots, st.preserveSpace).removed;
+        if (typeof msg.extra.original === 'string') count += cleanOutsideCode(msg.extra.original, st.treatTwoDots, st.preserveSpace).removed;
       }
     });
     toast(count > 0 ? `พบ … ${count} ตัว` : 'ไม่พบ …');
@@ -350,6 +359,23 @@
     span2.textContent = 'ลบ ".." ด้วย';
     label2.append(chk2, span2);
 
+    const label3 = document.createElement('label');
+    label3.style.display = 'inline-flex';
+    label3.style.alignItems = 'center';
+    label3.style.gap = '6px';
+    label3.style.cursor = 'pointer';
+    const chk3 = document.createElement('input');
+    chk3.type = 'checkbox';
+    chk3.checked = ensureSettings().preserveSpace;
+    chk3.onchange = () => {
+      ensureSettings().preserveSpace = chk3.checked;
+      saveSettings();
+      toast(`เว้นช่องว่าง: ${chk3.checked ? 'ON' : 'OFF'}`);
+    };
+    const span3 = document.createElement('span');
+    span3.textContent = 'เว้นช่องว่าง';
+    label3.append(chk3, span3);
+
     const menu = document.createElement('div');
     menu.style.display = 'none';
     menu.style.flexDirection = 'column';
@@ -363,7 +389,7 @@
     menu.style.borderRadius = '4px';
     menu.style.gap = '4px';
     menu.style.zIndex = '10000';
-    menu.append(label, label2);
+    menu.append(label, label2, label3);
 
     box.append(btn, menu);
 
@@ -408,7 +434,7 @@
     function adaptUI() {
       const mobile = typeof window !== 'undefined' && window.innerWidth <= 600;
       btn.style.width = mobile ? '100%' : '';
-      [label, label2].forEach(el => { el.style.width = mobile ? '100%' : ''; });
+      [label, label2, label3].forEach(el => { el.style.width = mobile ? '100%' : ''; });
       if (mount === document.body) {
         if (mobile) {
           box.style.left = '50%';
@@ -452,8 +478,8 @@
         if (!p) return;
         const st = ensureSettings();
         let removed = 0;
-        if (typeof p.message === 'string') { const r = cleanOutsideCode(p.message, st.treatTwoDots); p.message = r.text; removed += r.removed; }
-        if (typeof p.mes === 'string')     { const r = cleanOutsideCode(p.mes,     st.treatTwoDots); p.mes     = r.text; removed += r.removed; }
+        if (typeof p.message === 'string') { const r = cleanOutsideCode(p.message, st.treatTwoDots, st.preserveSpace); p.message = r.text; removed += r.removed; }
+        if (typeof p.mes === 'string')     { const r = cleanOutsideCode(p.mes,     st.treatTwoDots, st.preserveSpace); p.mes     = r.text; removed += r.removed; }
         if (removed) await refreshChatUIAndWait(() => window.RemoveEllipsis.ui.toast(`ลบ … ${removed}`));
       })();
     });
@@ -463,8 +489,8 @@
         const st = ensureSettings();
         if (!p || !st.autoRemove) return;
         let removed = 0;
-        if (typeof p.message === 'string') { const r = cleanOutsideCode(p.message, st.treatTwoDots); p.message = r.text; removed += r.removed; }
-        if (typeof p.mes === 'string')     { const r = cleanOutsideCode(p.mes,     st.treatTwoDots); p.mes     = r.text; removed += r.removed; }
+        if (typeof p.message === 'string') { const r = cleanOutsideCode(p.message, st.treatTwoDots, st.preserveSpace); p.message = r.text; removed += r.removed; }
+        if (typeof p.mes === 'string')     { const r = cleanOutsideCode(p.mes,     st.treatTwoDots, st.preserveSpace); p.mes     = r.text; removed += r.removed; }
         if (removed) {
           await refreshChatUIAndWait(() => {
             const last = document.querySelector('.mes:last-child .mes_text, .message:last-child .message-text, .chat-message:last-child, .mes_markdown:last-child, .markdown:last-child');
