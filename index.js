@@ -299,47 +299,107 @@
     ) || document.body;
 
     const box = document.createElement('div');
-    box.id='remove-ellipsis-ext__container';
-    box.style.display='flex';
-    box.style.alignItems='center';
-    box.style.gap='8px';
-    box.style.margin='6px 0';
-    box.style.padding='6px 10px';
-    box.style.background='var(--accent-bg,#f7f7f7)';
-    box.style.border='1px solid var(--border-color,#ccc)';
-    box.style.borderRadius='8px';
-    box.style.flexWrap='wrap';
+    box.id = 'remove-ellipsis-ext__container';
+    box.style.display = 'inline-flex';
+    box.style.alignItems = 'center';
+    box.style.gap = '8px';
+    box.style.margin = '6px 0';
+    box.style.position = 'relative';
+    box.style.flexWrap = 'wrap';
 
-    const btn=document.createElement('button');
-    btn.type='button';
-    btn.textContent='Remove …';
-    btn.title='ลบ .../.. / … จากบทสนทนาทั้งหมด (ปลอดภัยต่อ Markdown)';
-    btn.style.padding='6px 10px';
-    btn.style.borderRadius='6px';
-    btn.style.border='1px solid var(--border-color,#ccc)';
-    btn.style.cursor='pointer';
-    btn.addEventListener('click', () => removeEllipsesFromChat());
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = 'Remove …';
+    btn.title = 'ลบ .../.. / … จากบทสนทนาทั้งหมด (ปลอดภัยต่อ Markdown)';
+    btn.style.padding = '4px 8px';
+    btn.style.borderRadius = '4px';
+    btn.style.border = '1px solid var(--border-color,#ccc)';
+    btn.style.cursor = 'pointer';
 
-    const label=document.createElement('label');
-    label.style.display='inline-flex'; label.style.alignItems='center'; label.style.gap='6px'; label.style.cursor='pointer';
-    const chk=document.createElement('input'); chk.type='checkbox';
-    chk.checked=ensureSettings().autoRemove;
-    chk.onchange=()=>{ ensureSettings().autoRemove=chk.checked; saveSettings(); toast(`Auto Remove: ${chk.checked?'ON':'OFF'}`); };
-    const span=document.createElement('span'); span.textContent='Auto Remove';
-    label.append(chk,span);
+    const label = document.createElement('label');
+    label.style.display = 'inline-flex';
+    label.style.alignItems = 'center';
+    label.style.gap = '6px';
+    label.style.cursor = 'pointer';
+    const chk = document.createElement('input');
+    chk.type = 'checkbox';
+    chk.checked = ensureSettings().autoRemove;
+    chk.onchange = () => {
+      ensureSettings().autoRemove = chk.checked;
+      saveSettings();
+      toast(`Auto Remove: ${chk.checked ? 'ON' : 'OFF'}`);
+    };
+    const span = document.createElement('span');
+    span.textContent = 'Auto Remove';
+    label.append(chk, span);
 
-    const label2=document.createElement('label');
-    label2.style.display='inline-flex'; label2.style.alignItems='center'; label2.style.gap='6px'; label2.style.cursor='pointer';
-    const chk2=document.createElement('input'); chk2.type='checkbox';
-    chk2.checked=ensureSettings().treatTwoDots;
-    chk2.onchange=()=>{ ensureSettings().treatTwoDots=chk2.checked; saveSettings(); toast(`ลบ "..": ${chk2.checked?'ON':'OFF'}`); };
-    const span2=document.createElement('span'); span2.textContent='ลบ ".." ด้วย';
+    const label2 = document.createElement('label');
+    label2.style.display = 'inline-flex';
+    label2.style.alignItems = 'center';
+    label2.style.gap = '6px';
+    label2.style.cursor = 'pointer';
+    const chk2 = document.createElement('input');
+    chk2.type = 'checkbox';
+    chk2.checked = ensureSettings().treatTwoDots;
+    chk2.onchange = () => {
+      ensureSettings().treatTwoDots = chk2.checked;
+      saveSettings();
+      toast(`ลบ "..": ${chk2.checked ? 'ON' : 'OFF'}`);
+    };
+    const span2 = document.createElement('span');
+    span2.textContent = 'ลบ ".." ด้วย';
     label2.append(chk2, span2);
 
-    box.append(btn, label, label2);
+    const menu = document.createElement('div');
+    menu.style.display = 'none';
+    menu.style.flexDirection = 'column';
+    menu.style.position = 'absolute';
+    menu.style.top = '100%';
+    menu.style.right = '0';
+    menu.style.marginTop = '4px';
+    menu.style.padding = '6px';
+    menu.style.background = 'var(--accent-bg,#fff)';
+    menu.style.border = '1px solid var(--border-color,#ccc)';
+    menu.style.borderRadius = '4px';
+    menu.style.gap = '4px';
+    menu.style.zIndex = '10000';
+    menu.append(label, label2);
+
+    box.append(btn, menu);
+
+    let menuOpen = false;
+    function showMenu() {
+      menu.style.display = 'flex';
+      menuOpen = true;
+    }
+    function hideMenu() {
+      menu.style.display = 'none';
+      menuOpen = false;
+    }
+
+    btn.addEventListener('click', () => {
+      if (!menuOpen) removeEllipsesFromChat();
+    });
+    btn.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+      showMenu();
+    });
+    let pressTimer;
+    btn.addEventListener('touchstart', () => {
+      pressTimer = setTimeout(showMenu, 500);
+    }, { passive: true });
+    btn.addEventListener('touchend', () => {
+      clearTimeout(pressTimer);
+    });
+    document.addEventListener('click', (e) => {
+      if (!box.contains(e.target)) hideMenu();
+    });
 
     if (mount === document.body) {
-      box.style.position='fixed'; box.style.bottom='12px'; box.style.right='12px'; box.style.zIndex='9999';
+      box.style.position = 'fixed';
+      box.style.bottom = '12px';
+      box.style.right = '12px';
+      box.style.zIndex = '9999';
       document.body.appendChild(box);
     } else {
       mount.appendChild(box);
@@ -347,18 +407,25 @@
 
     function adaptUI() {
       const mobile = typeof window !== 'undefined' && window.innerWidth <= 600;
-      [btn, label, label2].forEach(el => { el.style.width = mobile ? '100%' : ''; });
+      btn.style.width = mobile ? '100%' : '';
+      [label, label2].forEach(el => { el.style.width = mobile ? '100%' : ''; });
       if (mount === document.body) {
         if (mobile) {
           box.style.left = '50%';
           box.style.right = '';
           box.style.transform = 'translateX(-50%)';
           box.style.maxWidth = 'calc(100% - 24px)';
+          menu.style.left = '0';
+          menu.style.right = 'auto';
+          menu.style.width = '100%';
         } else {
           box.style.left = '';
           box.style.right = '12px';
           box.style.transform = '';
           box.style.maxWidth = '';
+          menu.style.left = 'auto';
+          menu.style.right = '0';
+          menu.style.width = '';
         }
       }
     }
