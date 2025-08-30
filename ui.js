@@ -129,6 +129,18 @@
     toast(removedSum > 0 ? `ลบแล้ว ${removedSum} ตัว` : 'ไม่มี …');
   }
 
+  // Re-add the button if the chat UI is re-rendered and removes it
+  function observeUI() {
+    if (observeUI._observer) return;
+    const mo = new MutationObserver(() => {
+      if (!document.getElementById('remove-ellipsis-ext__container')) {
+        addUI();
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+    observeUI._observer = mo;
+  }
+
   function addUI() {
     if (document.querySelector('#remove-ellipsis-ext__container')) return;
 
@@ -177,6 +189,8 @@
     } else {
       mount.appendChild(box);
     }
+
+    observeUI();
   }
 
   // export ui module
