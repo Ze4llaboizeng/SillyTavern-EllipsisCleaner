@@ -339,6 +339,7 @@
       ensureSettings().autoRemove = chk.checked;
       saveSettings();
       toast(`Auto Remove: ${chk.checked ? 'ON' : 'OFF'}`);
+      if (chk.checked) removeEllipsesFromChat();
     };
     const span = document.createElement('span');
     span.textContent = 'Auto Remove';
@@ -404,12 +405,22 @@
       menu.style.top = '100%';
       menu.style.marginBottom = '';
       menu.style.marginTop = '4px';
-      const rect = menu.getBoundingClientRect();
+      let rect = menu.getBoundingClientRect();
       if (rect.bottom > window.innerHeight) {
         menu.style.top = 'auto';
         menu.style.bottom = '100%';
         menu.style.marginTop = '';
         menu.style.marginBottom = '4px';
+        rect = menu.getBoundingClientRect();
+      }
+      if (rect.left < 0) {
+        menu.style.right = 'auto';
+        menu.style.left = '0';
+        rect = menu.getBoundingClientRect();
+      }
+      if (rect.right > window.innerWidth) {
+        menu.style.left = 'auto';
+        menu.style.right = '0';
       }
     }
     function hideMenu() {
@@ -475,7 +486,14 @@
     observeUI();
   }
 
-  window.RemoveEllipsis.ui = { addUI, hookOutgoingInput, toast, overlayHighlight, checkEllipsesInChat: countEllipsesInChat };
+  window.RemoveEllipsis.ui = {
+    addUI,
+    hookOutgoingInput,
+    toast,
+    overlayHighlight,
+    checkEllipsesInChat: countEllipsesInChat,
+    removeFromChat: removeEllipsesFromChat,
+  };
 
   // ---------- Wiring & Boot ----------
   function wireWithEvents() {
@@ -515,11 +533,16 @@
       })();
     });
 
+    const initUI = () => {
+      addUI();
+      hookOutgoingInput();
+      if (ensureSettings().autoRemove) removeEllipsesFromChat();
+    };
     if (event_types.APP_READY) {
-      eventSource.on(event_types.APP_READY, () => { addUI(); hookOutgoingInput(); });
+      eventSource.on(event_types.APP_READY, initUI);
     } else {
-      document.addEventListener('DOMContentLoaded', () => { addUI(); hookOutgoingInput(); }, { once: true });
-      setTimeout(() => { addUI(); hookOutgoingInput(); }, 800);
+      document.addEventListener('DOMContentLoaded', initUI, { once: true });
+      setTimeout(initUI, 800);
     }
     return true;
   }
@@ -527,8 +550,13 @@
   function wireWithFallback() {
     const { addUI, hookOutgoingInput } = window.RemoveEllipsis.ui;
     if (typeof document === 'undefined') return;
-    document.addEventListener('DOMContentLoaded', () => { addUI(); hookOutgoingInput(); });
-    setTimeout(() => { addUI(); hookOutgoingInput(); }, 800);
+    const initUI = () => {
+      addUI();
+      hookOutgoingInput();
+      if (ensureSettings().autoRemove) removeEllipsesFromChat();
+    };
+    document.addEventListener('DOMContentLoaded', initUI);
+    setTimeout(initUI, 800);
   }
 
   function boot() {
