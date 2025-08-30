@@ -1,9 +1,9 @@
-/* Remove Ellipsis v1.4.0
- * - ลบ "..." / ".." (ถ้าเปิดตัวเลือก) / "…" ทั้งฝั่งผู้ใช้และ AI
+/* Remove Ellipsis v1.5.0
+ * - ลบ "..." / ".." (ตัวเลือก) / "…" ทั้งฝั่งผู้ใช้และ AI
  * - ปุ่ม Remove … (ลบย้อนหลัง), Toggle Auto Remove, Toggle ลบ ".."
- * - Toast + Overlay Highlight (ไม่แตะธีม)
- * - Refresh UI ด้วย renderChat/CHAT_CHANGED/saveChat/scroll resize
- * - ไม่ทำลาย Markdown: ลบแค่ raw message
+ * - ไม่แก้ HTML ที่เรนเดอร์แล้ว -> ปลอดภัยต่อ Markdown/ธีม
+ * - Toast + Overlay Highlight (ไม่รบกวนสีธีม)
+ * - Hard Refresh UI: rebind chat + emit หลายอีเวนต์ + renderChat/saveChat/resize/nudge scroll + multi-tick
  */
 (() => {
   if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -12,8 +12,8 @@
   const MODULE = 'removeEllipsisExt';
   const DEFAULTS = {
     autoRemove: false,
-    treatTwoDots: true,     // ลบ ".." ด้วยไหม
-    highlight: 'overlay'
+    treatTwoDots: true,     // ลบ ".." ด้วยไหม (ดีฟอลต์เปิด)
+    highlight: 'overlay'    // 'overlay' | 'none'
   };
 
   // ---------------- Context ----------------
@@ -86,23 +86,30 @@
     }, 900);
   }
 
-  // ---------------- Cleaner ----------------
+  // ---------------- Cleaner (safe for Markdown) ----------------
+  // ลบเฉพาะนอกโค้ด: ข้าม ```block``` และ `inline`
   function cleanOutsideCode(text, treatTwoDots) {
     if (typeof text !== 'string' || !text) return { text, removed: 0 };
+
     // protect code blocks
     const blockRegex = /```[\s\S]*?```/g;
     const blocks = [];
     const sk1 = text.replace(blockRegex, m => `@@BLOCK${blocks.push(m)-1}@@`);
+
+    // protect inline code
     const inlineRegex = /`[^`]*`/g;
     const inlines = [];
     const sk2 = sk1.replace(inlineRegex, m => `@@INLINE${inlines.push(m)-1}@@`);
 
+    // pattern: “…” เสมอ + จุดติดกัน
     const pattern = treatTwoDots ? /(?<!\d)\.{2,}(?!\d)|…/g : /\.{3,}|…/g;
+
     let removed = 0;
     const cleaned = sk2.replace(pattern, m => { removed += m.length; return ''; });
 
+    // restore back
     let restored = cleaned.replace(/@@INLINE(\d+)@@/g, (_,i)=>inlines[i]);
-    restored = restored.replace(/@@BLOCK(\d+)@@/g, (_,i)=>blocks[i]);
+    restored = restored.replace(/@@BLOCK(\d+)@@/g,  (_,i)=>blocks[i]);
     return { text: restored, removed };
   }
   function cleanMessageObject(msg) {
@@ -126,33 +133,71 @@
     return total;
   }
 
-  // ---------------- Force Refresh UI ----------------
+  // ---------------- Hard Refresh UI ----------------
   function refreshChatUI() {
     const ctx = getCtx();
+    if (!ctx) return;
+
+    // 1) Rebind chat array + inject nonce เพื่อให้ reactive system เห็นการเปลี่ยน
     try {
-      if (typeof ctx?.renderChat === 'function') { ctx.renderChat(); return; }
-      ctx?.eventSource?.emit?.(ctx?.event_types?.CHAT_CHANGED, {});
-      ctx?.saveChat?.();
-      window.dispatchEvent(new Event('resize'));
-      const chat = document.querySelector('#chat, .chat, .dialogues');
-      if (chat) { const y = chat.scrollTop; chat.scrollTop = y+1; chat.scrollTop = y; }
-    } catch(e){ console.warn('refreshChatUI failed', e); }
+      const nonce = Date.now();
+      if (Array.isArray(ctx.chat)) {
+        ctx.chat = ctx.chat.map(m => {
+          const clone = { ...m, _rmNonce: nonce };
+          if (clone.extra && typeof clone.extra === 'object') clone.extra = { ...clone.extra };
+          return clone;
+        });
+      }
+    } catch (e) {
+      console.warn('rebind chat failed', e);
+    }
+
+    // 2) ยิงหลาย event/วิธี
+    try { ctx?.eventSource?.emit?.(ctx?.event_types?.CHAT_CHANGED, { reason: 'remove-ellipsis-rebind' }); } catch(_) {}
+    try { ctx?.eventSource?.emit?.(ctx?.event_types?.MESSAGE_LIST_UPDATED, {}); } catch(_) {}
+    try { if (typeof ctx?.renderChat === 'function') ctx.renderChat(); } catch(_) {}
+    try { ctx?.saveChat?.(); } catch(_) {}
+
+    // 3) เขย่า layout/virtual list
+    try { window.dispatchEvent(new Event('resize')); } catch(_) {}
+    const scrollEl = document.querySelector('#chat, .chat, .dialogues');
+    if (scrollEl) {
+      const y = scrollEl.scrollTop;
+      scrollEl.scrollTop = y + 1;
+      scrollEl.scrollTop = y;
+    }
+
+    // 4) ยิงซ้ำแบบ multi-tick (กันคิวช้า)
+    requestAnimationFrame(() => {
+      try { ctx?.eventSource?.emit?.(ctx?.event_types?.CHAT_CHANGED, { reason: 'raf' }); } catch(_) {}
+      try { if (typeof ctx?.renderChat === 'function') ctx.renderChat(); } catch(_) {}
+      setTimeout(() => {
+        try { ctx?.saveChat?.(); } catch(_) {}
+        try { window.dispatchEvent(new Event('resize')); } catch(_) {}
+      }, 50);
+    });
   }
 
   // ---------------- Core ----------------
   function removeEllipsesFromChat() {
     const ctx = getCtx();
     let removedSum = 0;
-    if (ctx?.chat?.forEach) ctx.chat.forEach(m => removedSum += cleanMessageObject(m));
+
+    if (ctx?.chat?.forEach) {
+      ctx.chat.forEach(msg => { removedSum += cleanMessageObject(msg); });
+    }
+
     refreshChatUI();
+
     const last = document.querySelector(
       '.mes:last-child .mes_text, .message:last-child .message-text, .chat-message:last-child, .mes_markdown:last-child, .markdown:last-child'
     );
     overlayHighlight(last);
-    toast(removedSum>0 ? `ลบแล้ว ${removedSum} ตัว` : 'ไม่มี …');
+
+    toast(removedSum > 0 ? `ลบแล้ว ${removedSum} ตัว` : 'ไม่มี …');
   }
 
-  // ---------------- Input Hook ----------------
+  // ---------------- Input Hook (ฝั่ง "ผู้ใช้ส่ง") ----------------
   function getInputEl() {
     return (
       document.querySelector('textarea, .chat-input textarea') ||
@@ -168,78 +213,141 @@
     const r = cleanOutsideCode(val, settings.treatTwoDots);
     if (r.removed > 0) {
       if ('value' in el) el.value = r.text; else el.textContent = r.text;
-      const evOpts = { bubbles:true, cancelable:false };
-      el.dispatchEvent(new Event('input', evOpts));
-      el.dispatchEvent(new Event('change', evOpts));
+      const ev = { bubbles: true, cancelable: false };
+      el.dispatchEvent(new Event('input', ev));
+      el.dispatchEvent(new Event('change', ev));
+      // เผื่อ contenteditable
+      el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Unidentified' }));
     }
     return r.removed;
   }
   function hookOutgoingInput() {
     if (hookOutgoingInput._done) return; hookOutgoingInput._done = true;
+
     const form = document.querySelector('form.send-form, #send_form, form');
-    if (form) form.addEventListener('submit', ()=>{ const n=sanitizeCurrentInput(); if(n)toast(`ลบ … ${n}`); refreshChatUI();}, true);
+    if (form) form.addEventListener('submit', ()=>{ const n=sanitizeCurrentInput(); if(n)toast(`ลบ … ${n}`); refreshChatUI(); }, true);
+
     const btn = document.querySelector('.send-button, button[type="submit"], #send_but, .st-send');
-    if (btn) btn.addEventListener('mousedown', ()=>{ const n=sanitizeCurrentInput(); if(n)toast(`ลบ … ${n}`); refreshChatUI();}, true);
+    if (btn) btn.addEventListener('mousedown', ()=>{ const n=sanitizeCurrentInput(); if(n)toast(`ลบ … ${n}`); refreshChatUI(); }, true);
+
     const input = getInputEl();
     if (input) input.addEventListener('keydown', e=>{
-      if (e.key==='Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !e.isComposing) {
-        const n=sanitizeCurrentInput(); if(n)toast(`ลบ … ${n}`); refreshChatUI();
-      }
+      const isEnter = e.key==='Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !e.isComposing;
+      if (isEnter) { const n=sanitizeCurrentInput(); if(n)toast(`ลบ … ${n}`); refreshChatUI(); }
     }, true);
+
+    // paste/drop → sanitize หลังระบบใส่ค่าลงอินพุต
+    ['paste','drop'].forEach(evt=>{
+      (input||document).addEventListener(evt, ()=> setTimeout(()=>{ const n=sanitizeCurrentInput(); if(n)toast(`ลบ … ${n}`); }, 0), true);
+    });
   }
 
   // ---------------- UI ----------------
   function addUI() {
     if (document.querySelector('#remove-ellipsis-ext__container')) return;
-    const mount = document.querySelector('.chat-input-container,.input-group,.send-form,#send_form,.chat-controls,.st-user-input') || document.body;
-    const box = document.createElement('div'); box.id='remove-ellipsis-ext__container';
-    box.style.display='flex'; box.style.gap='8px'; box.style.margin='6px 0';
 
-    const btn=document.createElement('button'); btn.textContent='Remove …'; btn.onclick=removeEllipsesFromChat;
-    const label=document.createElement('label'); const chk=document.createElement('input'); chk.type='checkbox';
-    chk.checked=ensureSettings().autoRemove; chk.onchange=()=>{ensureSettings().autoRemove=chk.checked; saveSettings();};
-    label.append(chk,document.createTextNode('Auto Remove'));
-    const label2=document.createElement('label'); const chk2=document.createElement('input'); chk2.type='checkbox';
-    chk2.checked=ensureSettings().treatTwoDots; chk2.onchange=()=>{ensureSettings().treatTwoDots=chk2.checked; saveSettings();};
-    label2.append(chk2,document.createTextNode('ลบ ".." ด้วย'));
-    box.append(btn,label,label2);
-    if(mount===document.body){box.style.position='fixed';box.style.bottom='12px';box.style.right='12px';box.style.zIndex='9999';}
-    mount.appendChild(box);
+    const mount = document.querySelector('.chat-input-container,.input-group,.send-form,#send_form,.chat-controls,.st-user-input') || document.body;
+
+    const box = document.createElement('div');
+    box.id='remove-ellipsis-ext__container';
+    box.style.display='flex';
+    box.style.alignItems='center';
+    box.style.gap='8px';
+    box.style.margin='6px 0';
+
+    // ปุ่มลบย้อนหลัง
+    const btn=document.createElement('button');
+    btn.type='button';
+    btn.textContent='Remove …';
+    btn.title='ลบ .../.. / … จากบทสนทนาทั้งหมด (ปลอดภัยต่อ Markdown)';
+    btn.style.padding='6px 10px';
+    btn.style.borderRadius='8px';
+    btn.style.border='1px solid var(--border-color,#ccc)';
+    btn.style.cursor='pointer';
+    btn.addEventListener('click', removeEllipsesFromChat);
+
+    // Toggle Auto Remove
+    const label=document.createElement('label');
+    label.style.display='inline-flex'; label.style.alignItems='center'; label.style.gap='6px'; label.style.cursor='pointer';
+    const chk=document.createElement('input'); chk.type='checkbox';
+    chk.checked=ensureSettings().autoRemove;
+    chk.onchange=()=>{ ensureSettings().autoRemove=chk.checked; saveSettings(); toast(`Auto Remove: ${chk.checked?'ON':'OFF'}`); };
+
+    const span=document.createElement('span'); span.textContent='Auto Remove';
+    label.append(chk,span);
+
+    // Toggle ลบ ".."
+    const label2=document.createElement('label');
+    label2.style.display='inline-flex'; label2.style.alignItems='center'; label2.style.gap='6px'; label2.style.cursor='pointer';
+    const chk2=document.createElement('input'); chk2.type='checkbox';
+    chk2.checked=ensureSettings().treatTwoDots;
+    chk2.onchange=()=>{ ensureSettings().treatTwoDots=chk2.checked; saveSettings(); toast(`ลบ "..": ${chk2.checked?'ON':'OFF'}`); };
+    const span2=document.createElement('span'); span2.textContent='ลบ ".." ด้วย';
+    label2.append(chk2, span2);
+
+    box.append(btn, label, label2);
+
+    if (mount === document.body) {
+      box.style.position='fixed'; box.style.bottom='12px'; box.style.right='12px'; box.style.zIndex='9999';
+      document.body.appendChild(box);
+    } else {
+      mount.appendChild(box);
+    }
   }
 
   // ---------------- Wiring ----------------
   function wireWithEvents() {
-    const ctx=getCtx(); if(!ctx)return false;
-    const {eventSource,event_types}=ctx||{}; if(!eventSource||!event_types)return false;
-    eventSource.on?.(event_types.MESSAGE_SENT,p=>{
-      if(!p)return; let r1=cleanOutsideCode(p.message,ensureSettings().treatTwoDots);
-      if(r1.removed)p.message=r1.text;
-      let r2=cleanOutsideCode(p.mes,ensureSettings().treatTwoDots);
-      if(r2.removed)p.mes=r2.text;
-      if(r1.removed||r2.removed)refreshChatUI();
+    const ctx = getCtx(); if (!ctx) return false;
+    const { eventSource, event_types } = ctx || {};
+    if (!eventSource || !event_types) return false;
+
+    // ผู้ใช้ส่ง → ลบ raw ก่อนบันทึก/เรนเดอร์
+    eventSource.on?.(event_types.MESSAGE_SENT, (p) => {
+      if (!p) return;
+      const settings = ensureSettings();
+      let removed = 0;
+      if (typeof p.message === 'string') { const r = cleanOutsideCode(p.message, settings.treatTwoDots); p.message = r.text; removed += r.removed; }
+      if (typeof p.mes === 'string')     { const r = cleanOutsideCode(p.mes,     settings.treatTwoDots); p.mes     = r.text; removed += r.removed; }
+      if (removed) refreshChatUI();
     });
-    eventSource.on?.(event_types.MESSAGE_RECEIVED,p=>{
-      if(!p||!ensureSettings().autoRemove)return; let r1=cleanOutsideCode(p.message,ensureSettings().treatTwoDots);
-      if(r1.removed)p.message=r1.text; let r2=cleanOutsideCode(p.mes,ensureSettings().treatTwoDots);
-      if(r2.removed)p.mes=r2.text; if(r1.removed||r2.removed){refreshChatUI();}
+
+    // AI ตอบ → ถ้าเปิด Auto Remove ให้ลบ raw แล้วค่อยรีเฟรช
+    eventSource.on?.(event_types.MESSAGE_RECEIVED, (p) => {
+      const settings = ensureSettings();
+      if (!p || !settings.autoRemove) return;
+      let removed = 0;
+      if (typeof p.message === 'string') { const r = cleanOutsideCode(p.message, settings.treatTwoDots); p.message = r.text; removed += r.removed; }
+      if (typeof p.mes === 'string')     { const r = cleanOutsideCode(p.mes,     settings.treatTwoDots); p.mes     = r.text; removed += r.removed; }
+      if (removed) {
+        refreshChatUI();
+        const last = document.querySelector(
+          '.mes:last-child .mes_text, .message:last-child .message-text, .chat-message:last-child, .mes_markdown:last-child, .markdown:last-child'
+        );
+        overlayHighlight(last);
+      }
     });
-    if(event_types.APP_READY){
-      eventSource.on(event_types.APP_READY,()=>{addUI(); hookOutgoingInput();});
+
+    // APP_READY → วาง UI + hook อินพุต
+    if (event_types.APP_READY) {
+      eventSource.on(event_types.APP_READY, () => { addUI(); hookOutgoingInput(); });
     } else {
-      document.addEventListener('DOMContentLoaded',()=>{addUI(); hookOutgoingInput();},{once:true});
-      setTimeout(()=>{addUI(); hookOutgoingInput();},800);
+      document.addEventListener('DOMContentLoaded', () => { addUI(); hookOutgoingInput(); }, { once: true });
+      setTimeout(() => { addUI(); hookOutgoingInput(); }, 800);
     }
     return true;
   }
-  function wireWithFallback(){
-    document.addEventListener('DOMContentLoaded',()=>{addUI(); hookOutgoingInput();});
-    setTimeout(()=>{addUI(); hookOutgoingInput();},800);
+
+  function wireWithFallback() {
+    // ไม่มี Event API → วาง UI + hook อินพุต อย่างน้อยให้ฝั่งผู้ใช้สะอาดเสมอ
+    document.addEventListener('DOMContentLoaded', () => { addUI(); hookOutgoingInput(); });
+    setTimeout(() => { addUI(); hookOutgoingInput(); }, 800);
   }
 
   // ---------------- Boot ----------------
-  (function boot(){
+  (function boot() {
     ensureSettings();
-    const ok=wireWithEvents(); if(!ok)wireWithFallback();
-    setTimeout(addUI,1000);
+    const ok = wireWithEvents();
+    if (!ok) wireWithFallback();
+    setTimeout(addUI, 1000); // เผื่อหน้าโหลดก่อน
   })();
 })();
