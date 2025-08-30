@@ -1,47 +1,15 @@
-/* Remove Ellipsis Extension for SillyTavern
- * - ลบ "..." และ "…" จากข้อความทั้งฝั่งผู้ใช้และ AI
- * - มีปุ่ม Remove ... และ Toggle Auto Remove
- * - รองรับทั้ง stable และ staging โดยใช้ API พื้นฐาน (event + context)
- */
+/* Remove Ellipsis – compatible with old/new ST */
 (() => {
-  // ป้องกันโหลดซ้ำ
   if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
   window.__REMOVE_ELLIPSIS_EXT_LOADED__ = true;
 
-  // รอให้ SillyTavern พร้อม (ทั้ง stable/staging)
-  function whenReady(fn) {
-    const tryRun = () => {
-      const ctx = getCtx();
-      if (ctx && ctx.eventSource && ctx.event_types) {
-        fn();
-        return true;
-      }
-      return false;
-    };
-    if (tryRun()) return;
-    const timer = setInterval(() => {
-      if (tryRun()) clearInterval(timer);
-    }, 300);
-    // เผื่อ DOMContentLoaded แล้วค่อยลองอีกที
-    document.addEventListener('DOMContentLoaded', tryRun, { once: true });
-  }
-
-  // ดึง context จาก SillyTavern ให้ปลอดภัย
-  function getCtx() {
-    try {
-      if (window.SillyTavern && typeof window.SillyTavern.getContext === 'function') {
-        return window.SillyTavern.getContext();
-      }
-    } catch (_) {}
-    return null;
-  }
-
   const MODULE = 'removeEllipsisExt';
-  const DEFAULTS = {
-    autoRemove: false
-  };
+  const DEFAULTS = { autoRemove: false };
 
-  // ---- settings helpers ----
+  function getCtx() {
+    try { return window.SillyTavern?.getContext?.() || null; } catch (_) { return null; }
+  }
+
   function ensureSettings() {
     const ctx = getCtx();
     if (!ctx) return DEFAULTS;
@@ -55,186 +23,158 @@
   function saveSettings() {
     const ctx = getCtx();
     if (!ctx) return;
-    // ใช้ตัวที่มี ถ้าไม่มีก็ fallback
-    if (typeof ctx.saveSettingsDebounced === 'function') ctx.saveSettingsDebounced();
-    else if (typeof ctx.saveSettings === 'function') ctx.saveSettings();
+    (ctx.saveSettingsDebounced || ctx.saveSettings || (()=>{})).call(ctx);
   }
 
-  // ---- core text cleaner ----
-  function cleanText(text) {
-    if (!text || typeof text !== 'string') return text;
-    // ลบ ... และ … แล้วเก็บช่องว่างให้เรียบ
-    // 1) ลบ "..." ทั้งหมด
-    let out = text.replace(/\.\.\./g, '');
-    // 2) ลบอักขระ ellipsis เดี่ยวๆ "…"
-    out = out.replace(/…/g, '');
-    // 3) เก็บช่องว่างซ้ำๆ ให้เหลือช่องเดียว (ไม่บังคับ ถ้าไม่ต้องการให้คอมเมนต์บรรทัดนี้)
-    out = out.replace(/ {2,}/g, ' ');
-    // 4) เก็บเว้นบรรทัดส่วนเกิน
-    out = out.replace(/\n{3,}/g, '\n\n');
+  function cleanText(t) {
+    if (typeof t !== 'string') return t;
+    let out = t.replace(/\.\.\./g, '').replace(/…/g, '');
+    out = out.replace(/ {2,}/g, ' ').replace(/\n{3,}/g, '\n\n');
     return out;
   }
-
-  // ลบจากอ็อบเจ็กต์ข้อความ 1 ชิ้น (รองรับฟิลด์ที่ต่างเวอร์ชันอาจใช้)
-  function cleanMessageObject(msgObj) {
-    if (!msgObj) return;
-    // ฟิลด์หลักที่ ST ใช้บ่อยคือ mes
-    if (typeof msgObj.mes === 'string') msgObj.mes = cleanText(msgObj.mes);
-    // เผื่อมีฟิลด์อื่นที่ใช้แสดงผล
-    if (typeof msgObj.extra === 'object' && msgObj.extra) {
-      if (typeof msgObj.extra.display_text === 'string') {
-        msgObj.extra.display_text = cleanText(msgObj.extra.display_text);
-      }
-      if (typeof msgObj.extra.original === 'string') {
-        msgObj.extra.original = cleanText(msgObj.extra.original);
-      }
+  function cleanMessageObject(msg) {
+    if (!msg) return;
+    if (typeof msg.mes === 'string') msg.mes = cleanText(msg.mes);
+    if (msg.extra) {
+      if (typeof msg.extra.display_text === 'string') msg.extra.display_text = cleanText(msg.extra.display_text);
+      if (typeof msg.extra.original === 'string') msg.extra.original = cleanText(msg.extra.original);
     }
   }
-
-  // ลบจากแชททั้งหมด (กดปุ่ม)
   function removeEllipsesFromChat() {
     const ctx = getCtx();
-    if (!ctx || !Array.isArray(ctx.chat)) return;
-    ctx.chat.forEach(cleanMessageObject);
-
-    // แจ้ง UI ให้รีเฟรช ถ้ามีอีเวนต์ให้ใช้
-    try {
-      if (ctx.eventSource && ctx.event_types && ctx.event_types.CHAT_CHANGED) {
-        ctx.eventSource.emit(ctx.event_types.CHAT_CHANGED, {});
-      }
-    } catch (_) {}
-
-    // เผื่อไว้: บันทึกแชทเฉยๆ ก็พอให้ UI เด้งได้ในบางเวอร์ชัน
-    if (typeof ctx.saveChat === 'function') {
-      ctx.saveChat();
+    if (ctx?.chat?.forEach) {
+      ctx.chat.forEach(cleanMessageObject);
+      try {
+        ctx.eventSource?.emit?.(ctx.event_types?.CHAT_CHANGED, {});
+      } catch(_) {}
+      (ctx.saveChat || (()=>{})).call(ctx);
+    } else {
+      // DOM fallback – แก้ข้อความที่แสดงแล้ว
+      document.querySelectorAll('.mes_text, .message, .message-text').forEach(el => {
+        el.textContent = cleanText(el.textContent || '');
+      });
     }
   }
 
   // ---- UI ----
   function addUI() {
-    // ป้องกันสร้าง UI ซ้ำ
     if (document.querySelector('#remove-ellipsis-ext__container')) return;
 
-    // หาที่วางปุ่ม: พยายามหาใกล้แถบอินพุต
     const candidates = [
-      '.chat-input-container',
-      '.input-group',
-      '.send-form',
-      '#send_form',
-      '.chat-controls',
-      '.st-user-input'
+      '.chat-input-container','.input-group','.send-form','#send_form',
+      '.chat-controls','.st-user-input'
     ];
-    let mountPoint = null;
-    for (const sel of candidates) {
-      const el = document.querySelector(sel);
-      if (el) { mountPoint = el; break; }
-    }
-    if (!mountPoint) {
-      // ถ้าไม่เจอ ให้ลองแทรกบนสุดของ body (กรณีพิเศษ)
-      mountPoint = document.body;
-    }
+    let mount = candidates.map(s=>document.querySelector(s)).find(Boolean) || document.body;
 
-    // สร้าง container
-    const wrap = document.createElement('div');
-    wrap.id = 'remove-ellipsis-ext__container';
-    wrap.style.display = 'flex';
-    wrap.style.alignItems = 'center';
-    wrap.style.gap = '8px';
-    wrap.style.margin = '6px 0';
+    const box = document.createElement('div');
+    box.id = 'remove-ellipsis-ext__container';
+    box.style.display = 'flex'; box.style.alignItems = 'center';
+    box.style.gap = '8px'; box.style.margin = '6px 0';
 
-    // ปุ่มกดลบทันที
     const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.textContent = 'Remove …';
+    btn.type = 'button'; btn.textContent = 'Remove …';
     btn.title = 'ลบ .../… จากบทสนทนาทั้งหมด';
-    btn.style.padding = '6px 10px';
-    btn.style.borderRadius = '8px';
-    btn.style.border = '1px solid var(--border-color, #ccc)';
-    btn.style.cursor = 'pointer';
+    btn.style.padding = '6px 10px'; btn.style.borderRadius = '8px';
+    btn.style.border = '1px solid var(--border-color,#ccc)'; btn.style.cursor = 'pointer';
     btn.addEventListener('click', removeEllipsesFromChat);
 
-    // Toggle auto
     const label = document.createElement('label');
-    label.style.display = 'inline-flex';
-    label.style.alignItems = 'center';
-    label.style.gap = '6px';
-    label.style.cursor = 'pointer';
-    const chk = document.createElement('input');
-    chk.type = 'checkbox';
-    chk.id = 'remove-ellipsis-ext__auto';
-    const settings = ensureSettings();
-    chk.checked = !!settings.autoRemove;
-    chk.addEventListener('change', () => {
-      settings.autoRemove = chk.checked;
-      saveSettings();
-    });
-    const span = document.createElement('span');
-    span.textContent = 'Auto Remove';
-    label.appendChild(chk);
-    label.appendChild(span);
+    label.style.display = 'inline-flex'; label.style.alignItems = 'center'; label.style.gap = '6px';
+    const chk = document.createElement('input'); chk.type = 'checkbox'; chk.id = 'remove-ellipsis-ext__auto';
+    const settings = ensureSettings(); chk.checked = !!settings.autoRemove;
+    chk.addEventListener('change', ()=>{ settings.autoRemove = chk.checked; saveSettings(); });
+    const span = document.createElement('span'); span.textContent = 'Auto Remove';
+    label.append(chk, span);
 
-    wrap.appendChild(btn);
-    wrap.appendChild(label);
+    box.append(btn, label);
 
-    // แทรก UI
-    // ถ้าเป็นแถบอินพุต ให้แปะท้าย; ถ้าเป็น body ให้แปะมุมบน
-    if (mountPoint === document.body) {
-      wrap.style.position = 'fixed';
-      wrap.style.bottom = '12px';
-      wrap.style.right = '12px';
-      wrap.style.zIndex = '9999';
-      document.body.appendChild(wrap);
+    if (mount === document.body) {
+      box.style.position = 'fixed'; box.style.bottom = '12px'; box.style.right = '12px'; box.style.zIndex = '9999';
+      document.body.appendChild(box);
     } else {
-      mountPoint.appendChild(wrap);
+      mount.appendChild(box);
     }
   }
 
-  // ---- event wiring ----
-  function wireEvents() {
-    const ctx = getCtx();
-    if (!ctx) return;
-    const { eventSource, event_types } = ctx;
+  // ---- Wiring (new API if present) ----
+  function wireWithEvents() {
+    const ctx = getCtx(); if (!ctx) return false;
+    const { eventSource, event_types } = ctx || {};
+    if (!eventSource || !event_types) return false;
 
-    // ผู้ใช้ส่งข้อความ -> ลบก่อนเก็บ
-    eventSource.on(event_types.MESSAGE_SENT, (payload) => {
-      if (!payload) return;
-      if (typeof payload.message === 'string') {
-        payload.message = cleanText(payload.message);
-      }
-      // บางเวอร์ชันอาจใช้ฟิลด์อื่น
-      if (typeof payload.mes === 'string') {
-        payload.mes = cleanText(payload.mes);
+    eventSource.on?.(event_types.MESSAGE_SENT, (p) => {
+      if (!p) return;
+      if (typeof p.message === 'string') p.message = cleanText(p.message);
+      if (typeof p.mes === 'string') p.mes = cleanText(p.mes);
+    });
+
+    eventSource.on?.(event_types.MESSAGE_RECEIVED, (p) => {
+      if (!p) return;
+      if (ensureSettings().autoRemove) {
+        if (typeof p.message === 'string') p.message = cleanText(p.message);
+        if (typeof p.mes === 'string') p.mes = cleanText(p.mes);
       }
     });
 
-    // AI ส่งข้อความ -> ถ้าเปิด auto ให้ลบทันที
-    eventSource.on(event_types.MESSAGE_RECEIVED, (payload) => {
-      const settings = ensureSettings();
-      if (!payload) return;
-
-      if (settings.autoRemove) {
-        if (typeof payload.message === 'string') {
-          payload.message = cleanText(payload.message);
-        }
-        if (typeof payload.mes === 'string') {
-          payload.mes = cleanText(payload.mes);
-        }
-      }
-    });
-
-    // เมื่อแอปพร้อม ให้ใส่ UI
     if (event_types.APP_READY) {
       eventSource.on(event_types.APP_READY, addUI);
     } else {
-      // เผื่อเวอร์ชันที่ไม่มี APP_READY
       document.addEventListener('DOMContentLoaded', addUI, { once: true });
-      setTimeout(addUI, 1000);
+      setTimeout(addUI, 800);
     }
+    return true;
   }
 
-  // เริ่มทำงานเมื่อ ST พร้อม
-  whenReady(() => {
-    ensureSettings();
-    wireEvents();
-  });
+  // ---- Fallback (old builds without Event API) ----
+  function wireWithFallback() {
+    // ดัก submit ฟอร์มผู้ใช้
+    const tryHookForm = () => {
+      const form = document.querySelector('form.send-form, #send_form, form');
+      if (!form || form.__ellipsis_hooked) return !!form;
+      form.__ellipsis_hooked = true;
+      form.addEventListener('submit', () => {
+        // ลบจุดจากช่องอินพุตก่อนส่ง
+        const ta = document.querySelector('textarea, .chat-input textarea');
+        if (ta) ta.value = cleanText(ta.value);
+      }, true);
+      return true;
+    };
+
+    // ลบอัตโนมัติเมื่อมีข้อความใหม่โผล่ใน DOM
+    const mo = new MutationObserver((list) => {
+      if (!ensureSettings().autoRemove) return;
+      for (const m of list) {
+        m.addedNodes?.forEach?.(node => {
+          if (node.nodeType === 1) {
+            const el = node.matches?.('.mes_text, .message, .message-text') ? node
+                     : node.querySelector?.('.mes_text, .message, .message-text');
+            if (el) el.textContent = cleanText(el.textContent || '');
+          }
+        });
+      }
+    });
+    const startObserver = () => {
+      const chat = document.querySelector('#chat, .mes, .chat, .dialogues');
+      if (!chat) return false;
+      mo.observe(chat, { childList: true, subtree: true });
+      return true;
+    };
+
+    // พยายาม hook ซ้ำ ๆ จนกว่าจะเจอ
+    const tick = () => {
+      const a = tryHookForm();
+      const b = startObserver();
+      if (!(a && b)) setTimeout(tick, 500);
+    };
+    document.addEventListener('DOMContentLoaded', () => { addUI(); tick(); });
+    setTimeout(()=>{ addUI(); tick(); }, 800);
+  }
+
+  // Boot
+  (function boot() {
+    const ok = wireWithEvents();
+    if (!ok) wireWithFallback();
+    // เผื่อหน้าโหลดก่อน สั่งเพิ่ม UI อีกรอบ
+    setTimeout(addUI, 1000);
+  })();
 })();
