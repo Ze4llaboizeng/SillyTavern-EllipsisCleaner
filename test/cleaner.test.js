@@ -1,9 +1,7 @@
 const assert = require('assert');
 
-global.window = { RemoveEllipsis: { core: { ensureSettings: () => ({}) } } };
-require('../cleaner.js');
-
-const { cleanOutsideCode } = window.RemoveEllipsis.cleaner;
+const ext = require('../index.js');
+const { cleanOutsideCode } = ext.cleaner;
 
 // Should not strip triple dots in numeric ranges when treatTwoDots is false
 assert.deepStrictEqual(
@@ -19,3 +17,4 @@ assert.deepStrictEqual(
 );
 
 console.log('Tests passed');
+
