@@ -322,7 +322,9 @@
     btn.title = 'ลบ .../.. / … จากบทสนทนาทั้งหมด (ปลอดภัยต่อ Markdown)';
     btn.style.padding = '4px 8px';
     btn.style.borderRadius = '4px';
-    btn.style.border = '1px solid var(--border-color,#ccc)';
+    btn.style.border = '1px solid #000';
+    btn.style.background = '#000';
+    btn.style.color = '#fff';
     btn.style.cursor = 'pointer';
 
     const label = document.createElement('label');
@@ -384,8 +386,9 @@
     menu.style.right = '0';
     menu.style.marginTop = '4px';
     menu.style.padding = '6px';
-    menu.style.background = 'var(--accent-bg,#fff)';
-    menu.style.border = '1px solid var(--border-color,#ccc)';
+    menu.style.background = '#000';
+    menu.style.color = '#fff';
+    menu.style.border = '1px solid #000';
     menu.style.borderRadius = '4px';
     menu.style.gap = '4px';
     menu.style.zIndex = '10000';
@@ -397,6 +400,25 @@
     function showMenu() {
       menu.style.display = 'flex';
       menuOpen = true;
+      menu.style.bottom = '';
+      menu.style.top = '100%';
+      menu.style.marginBottom = '';
+      menu.style.marginTop = '4px';
+      let rect = menu.getBoundingClientRect();
+      if (rect.bottom > window.innerHeight) {
+        menu.style.top = 'auto';
+        menu.style.bottom = '100%';
+        menu.style.marginTop = '';
+        menu.style.marginBottom = '4px';
+        rect = menu.getBoundingClientRect();
+      }
+      if (rect.left < 0) {
+        menu.style.left = '0';
+        menu.style.right = 'auto';
+      } else if (rect.right > window.innerWidth) {
+        menu.style.left = 'auto';
+        menu.style.right = '0';
+      }
     }
     function hideMenu() {
       menu.style.display = 'none';
