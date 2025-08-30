@@ -101,8 +101,19 @@
         document
           .querySelectorAll('.mes_text, .message-text, .chat-message, .mes_markdown, .markdown')
           .forEach(node => {
-            const r = cleanOutsideCode(node.textContent, st.treatTwoDots);
-            if (r.removed) node.textContent = r.text;
+            const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+            let tn;
+            while ((tn = walker.nextNode())) {
+              let p = tn.parentNode;
+              let skip = false;
+              while (p && p !== node) {
+                if (p.nodeName === 'CODE' || p.nodeName === 'PRE') { skip = true; break; }
+                p = p.parentNode;
+              }
+              if (skip) continue;
+              const r = cleanOutsideCode(tn.nodeValue, st.treatTwoDots);
+              if (r.removed) tn.nodeValue = r.text;
+            }
           });
       }
     } catch(_) {}
@@ -291,28 +302,23 @@
     box.id='remove-ellipsis-ext__container';
     box.style.display='flex';
     box.style.alignItems='center';
-    box.style.gap='10px';
+    box.style.gap='8px';
     box.style.margin='6px 0';
+    box.style.padding='6px 10px';
+    box.style.background='var(--accent-bg,#f7f7f7)';
+    box.style.border='1px solid var(--border-color,#ccc)';
+    box.style.borderRadius='8px';
+    box.style.flexWrap='wrap';
 
     const btn=document.createElement('button');
     btn.type='button';
     btn.textContent='Remove …';
     btn.title='ลบ .../.. / … จากบทสนทนาทั้งหมด (ปลอดภัยต่อ Markdown)';
     btn.style.padding='6px 10px';
-    btn.style.borderRadius='8px';
+    btn.style.borderRadius='6px';
     btn.style.border='1px solid var(--border-color,#ccc)';
     btn.style.cursor='pointer';
     btn.addEventListener('click', () => removeEllipsesFromChat());
-
-    const btnCheck=document.createElement('button');
-    btnCheck.type='button';
-    btnCheck.textContent='Check …';
-    btnCheck.title='ตรวจสอบจำนวน .../.. / … ในบทสนทนา';
-    btnCheck.style.padding='6px 10px';
-    btnCheck.style.borderRadius='8px';
-    btnCheck.style.border='1px solid var(--border-color,#ccc)';
-    btnCheck.style.cursor='pointer';
-    btnCheck.addEventListener('click', () => countEllipsesInChat());
 
     const label=document.createElement('label');
     label.style.display='inline-flex'; label.style.alignItems='center'; label.style.gap='6px'; label.style.cursor='pointer';
@@ -330,7 +336,7 @@
     const span2=document.createElement('span'); span2.textContent='ลบ ".." ด้วย';
     label2.append(chk2, span2);
 
-    box.append(btn, btnCheck, label, label2);
+    box.append(btn, label, label2);
 
     if (mount === document.body) {
       box.style.position='fixed'; box.style.bottom='12px'; box.style.right='12px'; box.style.zIndex='9999';
@@ -341,10 +347,7 @@
 
     function adaptUI() {
       const mobile = typeof window !== 'undefined' && window.innerWidth <= 600;
-      box.style.flexDirection = mobile ? 'column' : 'row';
-      box.style.alignItems = mobile ? 'stretch' : 'center';
-      box.style.gap = mobile ? '6px' : '10px';
-      [btn, btnCheck, label, label2].forEach(el => { el.style.width = mobile ? '100%' : ''; });
+      [btn, label, label2].forEach(el => { el.style.width = mobile ? '100%' : ''; });
       if (mount === document.body) {
         if (mobile) {
           box.style.left = '50%';
