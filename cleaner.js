@@ -1,0 +1,40 @@
+export function cleanOutsideCode(text, treatTwoDots) {
+  if (typeof text !== 'string' || !text) return { text, removed: 0 };
+
+  const blockRegex = /```[\s\S]*?```/g;
+  const blocks = [];
+  const sk1 = text.replace(blockRegex, m => `@@BLOCK${blocks.push(m)-1}@@`);
+
+  const inlineRegex = /`[^`]*`/g;
+  const inlines = [];
+  const sk2 = sk1.replace(inlineRegex, m => `@@INLINE${inlines.push(m)-1}@@`);
+
+  const pattern = treatTwoDots ? /(?<!\d)\.{2,}(?!\d)|…/g : /\.{3,}|…/g;
+
+  let removed = 0;
+  const cleaned = sk2.replace(pattern, m => { removed += m.length; return ''; });
+
+  let restored = cleaned.replace(/@@INLINE(\d+)@@/g, (_,i)=>inlines[i]);
+  restored = restored.replace(/@@BLOCK(\d+)@@/g,  (_,i)=>blocks[i]);
+  return { text: restored, removed };
+}
+
+export function cleanMessageObject(msg, settings) {
+  if (!msg) return 0;
+  let total = 0;
+  if (typeof msg.mes === 'string') {
+    const r = cleanOutsideCode(msg.mes, settings.treatTwoDots);
+    msg.mes = r.text; total += r.removed;
+  }
+  if (msg.extra) {
+    if (typeof msg.extra.display_text === 'string') {
+      const r = cleanOutsideCode(msg.extra.display_text, settings.treatTwoDots);
+      msg.extra.display_text = r.text; total += r.removed;
+    }
+    if (typeof msg.extra.original === 'string') {
+      const r = cleanOutsideCode(msg.extra.original, settings.treatTwoDots);
+      msg.extra.original = r.text; total += r.removed;
+    }
+  }
+  return total;
+}
