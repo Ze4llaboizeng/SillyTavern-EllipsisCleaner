@@ -566,13 +566,12 @@
         mo.observe(sc, { childList: true });
         watchIncoming._observer = mo;
       }
-    };
-
+    }
+ 
     const initUI = () => {
       addUI();
-      hookOutgoingInput(true);
+      hookOutgoingInput();
       if (ensureSettings().autoRemove) removeEllipsesFromChat();
-      watchIncoming();
     };
 
     document.addEventListener('DOMContentLoaded', initUI);
