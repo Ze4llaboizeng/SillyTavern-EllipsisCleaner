@@ -13,6 +13,7 @@ export function refreshChatUI() {
   try { if (typeof ctx?.renderChat === 'function') ctx.renderChat(); } catch(_) {}
   try { ctx?.saveChat?.(); } catch(_) {}
   try { window.dispatchEvent(new Event('resize')); } catch(_) {}
+
   const sc = document.querySelector('#chat, .chat, .dialogues');
   if (sc) { const y = sc.scrollTop; sc.scrollTop = y + 1; sc.scrollTop = y; }
 }
