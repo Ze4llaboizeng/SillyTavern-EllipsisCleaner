@@ -1,77 +1,125 @@
-import { cleanMessageObject, cleanOutsideCode } from './cleaner.js';
-import { toast, overlayHighlight } from './ui.js';
-import { refreshChatUI, refreshChatUIAndWait } from './refresh.js';
+/* Remove Ellipsis — index.js (boot & wiring) */
+(() => {
+  if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
+  window.__REMOVE_ELLIPSIS_EXT_LOADED__ = true;
 
-const MODULE = 'removeEllipsisExt';
-const DEFAULTS = { autoRemove: false, treatTwoDots: true };
+  // ---------- Core & Namespace ----------
+  const MODULE = 'removeEllipsisExt';
+  const DEFAULTS = { autoRemove: false, treatTwoDots: true, highlight: 'overlay' };
 
-function getCtx() { try { return window.SillyTavern?.getContext?.() || null; } catch (_) { return null; } }
-function ensureSettings() {
-  const ctx = getCtx();
-  if (!ctx) return structuredClone(DEFAULTS);
-  const { extensionSettings } = ctx;
-  if (!extensionSettings[MODULE]) extensionSettings[MODULE] = {};
-  for (const k of Object.keys(DEFAULTS)) {
-    if (!(k in extensionSettings[MODULE])) extensionSettings[MODULE][k] = DEFAULTS[k];
+  function getCtx() {
+    try { return window.SillyTavern?.getContext?.() || null; } catch (_) { return null; }
   }
-  return extensionSettings[MODULE];
-}
-function saveSettings() {
-  const ctx = getCtx();
-  if (!ctx) return;
-  (ctx.saveSettingsDebounced || ctx.saveSettings || (()=>{})).call(ctx);
-}
+  function ensureSettings() {
+    const ctx = getCtx();
+    if (!ctx) return structuredClone(DEFAULTS);
+    const store = ctx.extensionSettings || (ctx.extensionSettings = {});
+    if (!store[MODULE]) store[MODULE] = {};
+    for (const k of Object.keys(DEFAULTS)) if (!(k in store[MODULE])) store[MODULE][k] = DEFAULTS[k];
+    return store[MODULE];
+  }
+  function saveSettings() {
+    const ctx = getCtx();
+    (ctx?.saveSettingsDebounced || ctx?.saveSettings || (()=>{})).call(ctx);
+  }
 
-async function removeEllipsesFromChat() {
-  const ctx = getCtx();
-  let removedSum = 0;
-  if (ctx?.chat?.forEach) ctx.chat.forEach(m => removedSum += cleanMessageObject(m, ensureSettings()));
-  await refreshChatUIAndWait();
-  const last = document.querySelector('.mes:last-child .mes_text, .message:last-child .message-text, .chat-message:last-child');
-  overlayHighlight(last);
-  toast(removedSum>0 ? `ลบแล้ว ${removedSum} ตัว` : 'ไม่มี …');
-}
-
-function addUI() {
-  if (document.querySelector('#remove-ellipsis-ext__container')) return;
-  const mount = document.querySelector('.chat-input-container,.input-group,.send-form,#send_form,.chat-controls,.st-user-input') || document.body;
-  const box = document.createElement('div'); box.id='remove-ellipsis-ext__container';
-  box.style.display='flex'; box.style.gap='8px'; box.style.margin='6px 0';
-
-  const btn=document.createElement('button'); btn.textContent='Remove …'; btn.onclick=removeEllipsesFromChat;
-  const chk=document.createElement('input'); chk.type='checkbox'; chk.checked=ensureSettings().autoRemove;
-  chk.onchange=()=>{ensureSettings().autoRemove=chk.checked; saveSettings();};
-  const label=document.createElement('label'); label.append(chk,document.createTextNode('Auto Remove'));
-
-  const chk2=document.createElement('input'); chk2.type='checkbox'; chk2.checked=ensureSettings().treatTwoDots;
-  chk2.onchange=()=>{ensureSettings().treatTwoDots=chk2.checked; saveSettings();};
-  const label2=document.createElement('label'); label2.append(chk2,document.createTextNode('ลบ ".." ด้วย'));
-
-  box.append(btn,label,label2);
-  mount.appendChild(box);
-}
-
-function wireEvents() {
-  const ctx = getCtx(); if (!ctx) return;
-  const { eventSource, event_types } = ctx;
-  if (!eventSource) return;
-
-  eventSource.on?.(event_types.MESSAGE_SENT, async (p) => {
-    if (!p) return;
-    const s=ensureSettings();
-    let r1=cleanOutsideCode(p.message,s.treatTwoDots), r2=cleanOutsideCode(p.mes,s.treatTwoDots);
-    if (r1.removed||r2.removed) { p.message=r1.text; p.mes=r2.text; await refreshChatUIAndWait(); }
+  // Expose core to other files
+  window.RemoveEllipsis = Object.assign(window.RemoveEllipsis || {}, {
+    core: { MODULE, DEFAULTS, getCtx, ensureSettings, saveSettings }
   });
 
-  eventSource.on?.(event_types.MESSAGE_RECEIVED, async (p) => {
-    if (!p||!ensureSettings().autoRemove) return;
-    const s=ensureSettings();
-    let r1=cleanOutsideCode(p.message,s.treatTwoDots), r2=cleanOutsideCode(p.mes,s.treatTwoDots);
-    if (r1.removed||r2.removed) { p.message=r1.text; p.mes=r2.text; await refreshChatUIAndWait(); }
-  });
+  // ---------- Loader (load sibling files relative to this script) ----------
+  function getBasePath() {
+    try {
+      const tag = [...document.getElementsByTagName('script')]
+        .find(s => s.src && s.src.endsWith('/index.js') && s.src.includes('RemoveEllipsis'));
+      if (tag) return tag.src.slice(0, tag.src.lastIndexOf('/') + 1);
+    } catch (_){}
+    return ''; // ฟอลแบ็ก (หวังพึ่งเส้นทางสัมพัทธ์ของเว็บได้ในบางเซ็ตอัพ)
+  }
+  const BASE = getBasePath();
+  function loadScript(src) {
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = BASE + src;
+      s.async = false;
+      s.onload = resolve;
+      s.onerror = () => reject(new Error('Failed to load ' + src));
+      document.head.appendChild(s);
+    });
+  }
 
-  if (event_types.APP_READY) eventSource.on(event_types.APP_READY, addUI);
-  else { document.addEventListener('DOMContentLoaded', addUI, { once:true }); setTimeout(addUI, 1000); }
-}
+  async function loadAll() {
+    // โหลดตามลำดับให้แน่ใจว่า core พร้อมก่อน
+    await loadScript('cleaner.js');
+    await loadScript('refresh.js');
+    await loadScript('ui.js');
+  }
 
-(function boot(){ ensureSettings(); wireEvents(); })();
+  // ---------- Wiring after modules loaded ----------
+  function wireWithEvents() {
+    const ctx = getCtx(); if (!ctx) return false;
+    const { eventSource, event_types } = ctx || {};
+    if (!eventSource || !event_types) return false;
+
+    const { cleanOutsideCode } = window.RemoveEllipsis.cleaner;
+    const { refreshChatUIAndWait } = window.RemoveEllipsis.refresh;
+    const { addUI, hookOutgoingInput } = window.RemoveEllipsis.ui;
+    const settings = ensureSettings();
+
+    // ผู้ใช้ส่ง → ลบ raw ก่อน render แล้ว "รอ UI วาดเสร็จ" ค่อยโชว์ toast
+    eventSource.on?.(event_types.MESSAGE_SENT, (p) => {
+      (async () => {
+        if (!p) return;
+        const st = ensureSettings();
+        let removed = 0;
+        if (typeof p.message === 'string') { const r = cleanOutsideCode(p.message, st.treatTwoDots); p.message = r.text; removed += r.removed; }
+        if (typeof p.mes === 'string')     { const r = cleanOutsideCode(p.mes,     st.treatTwoDots); p.mes     = r.text; removed += r.removed; }
+        if (removed) await refreshChatUIAndWait(() => window.RemoveEllipsis.ui.toast(`ลบ … ${removed}`));
+      })();
+    });
+
+    // AI ตอบ → ถ้าเปิด Auto Remove ให้ลบ + รอ UI วาดเสร็จ + ไฮไลต์/แจ้งผล
+    eventSource.on?.(event_types.MESSAGE_RECEIVED, (p) => {
+      (async () => {
+        const st = ensureSettings();
+        if (!p || !st.autoRemove) return;
+        let removed = 0;
+        if (typeof p.message === 'string') { const r = cleanOutsideCode(p.message, st.treatTwoDots); p.message = r.text; removed += r.removed; }
+        if (typeof p.mes === 'string')     { const r = cleanOutsideCode(p.mes,     st.treatTwoDots); p.mes     = r.text; removed += r.removed; }
+        if (removed) {
+          await refreshChatUIAndWait(() => {
+            const last = document.querySelector('.mes:last-child .mes_text, .message:last-child .message-text, .chat-message:last-child, .mes_markdown:last-child, .markdown:last-child');
+            window.RemoveEllipsis.ui.overlayHighlight(last);
+            window.RemoveEllipsis.ui.toast(`ลบ … ${removed}`);
+          });
+        }
+      })();
+    });
+
+    if (event_types.APP_READY) {
+      eventSource.on(event_types.APP_READY, () => { addUI(); hookOutgoingInput(); });
+    } else {
+      document.addEventListener('DOMContentLoaded', () => { addUI(); hookOutgoingInput(); }, { once: true });
+      setTimeout(() => { addUI(); hookOutgoingInput(); }, 800);
+    }
+    return true;
+  }
+
+  function wireWithFallback() {
+    const { addUI, hookOutgoingInput } = window.RemoveEllipsis.ui;
+    document.addEventListener('DOMContentLoaded', () => { addUI(); hookOutgoingInput(); });
+    setTimeout(() => { addUI(); hookOutgoingInput(); }, 800);
+  }
+
+  // ---------- Boot ----------
+  (async function boot() {
+    try { await loadAll(); } catch (e) { console.error('[RemoveEllipsis] module load failed', e); }
+    window.RemoveEllipsis.core.ensureSettings();
+
+    const ok = wireWithEvents();
+    if (!ok) wireWithFallback();
+
+    setTimeout(() => window.RemoveEllipsis.ui?.addUI?.(), 1000);
+  })();
+})();
