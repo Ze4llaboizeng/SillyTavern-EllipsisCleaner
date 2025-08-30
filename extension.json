@@ -1,0 +1,7 @@
+{
+  "name": "Ellipsis Cleaner",
+  "description": "ลบ '...' ที่โมเดลใช้มากเกินไป",
+  "author": "your-github-username",
+  "version": "1.0",
+  "entry": "ellipsis-cleaner.js"
+}
