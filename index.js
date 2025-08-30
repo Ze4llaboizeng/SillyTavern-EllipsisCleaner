@@ -1,5 +1,6 @@
-/* Remove Ellipsis — index.js (boot & wiring) */
+/* Remove Ellipsis — single-file index.js */
 (() => {
+  if (typeof window === 'undefined') { global.window = {}; }
   if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
   window.__REMOVE_ELLIPSIS_EXT_LOADED__ = true;
 
@@ -23,40 +24,314 @@
     (ctx?.saveSettingsDebounced || ctx?.saveSettings || (()=>{})).call(ctx);
   }
 
-  // Expose core to other files
   window.RemoveEllipsis = Object.assign(window.RemoveEllipsis || {}, {
     core: { MODULE, DEFAULTS, getCtx, ensureSettings, saveSettings }
   });
 
-  // ---------- Loader (load sibling files relative to this script) ----------
-  function getBasePath() {
-    try {
-      const tag = [...document.getElementsByTagName('script')]
-        .find(s => s.src && s.src.endsWith('/index.js') && s.src.includes('RemoveEllipsis'));
-      if (tag) return tag.src.slice(0, tag.src.lastIndexOf('/') + 1);
-    } catch (_){}
-    return ''; // ฟอลแบ็ก (หวังพึ่งเส้นทางสัมพัทธ์ของเว็บได้ในบางเซ็ตอัพ)
+  // ---------- Cleaner ----------
+  function cleanOutsideCode(text, treatTwoDots) {
+    if (typeof text !== 'string' || !text) return { text, removed: 0 };
+
+    const blockRegex = /```[\s\S]*?```/g;
+    const blocks = [];
+    const sk1 = text.replace(blockRegex, m => `@@BLOCK${blocks.push(m)-1}@@`);
+
+    const inlineRegex = /`[^`]*`/g;
+    const inlines = [];
+    const sk2 = sk1.replace(inlineRegex, m => `@@INLINE${inlines.push(m)-1}@@`);
+
+    const pattern = treatTwoDots ? /(?<!\d)\.{2,}(?!\d)|…/g : /(?<!\d)\.{3,}(?!\d)|…/g;
+
+    let removed = 0;
+    const cleaned = sk2.replace(pattern, m => { removed += m.length; return ''; });
+
+    let restored = cleaned.replace(/@@INLINE(\d+)@@/g, (_,i)=>inlines[i]);
+    restored = restored.replace(/@@BLOCK(\d+)@@/g,  (_,i)=>blocks[i]);
+    return { text: restored, removed };
   }
-  const BASE = getBasePath();
-  function loadScript(src) {
-    return new Promise((resolve, reject) => {
-      const s = document.createElement('script');
-      s.src = BASE + src;
-      s.async = false;
-      s.onload = resolve;
-      s.onerror = () => reject(new Error('Failed to load ' + src));
-      document.head.appendChild(s);
+
+  function cleanMessageObject(msg) {
+    if (!msg) return 0;
+    const st = ensureSettings();
+    let total = 0;
+    if (typeof msg.mes === 'string') {
+      const r = cleanOutsideCode(msg.mes, st.treatTwoDots); msg.mes = r.text; total += r.removed;
+    }
+    if (msg.extra) {
+      if (typeof msg.extra.display_text === 'string') {
+        const r = cleanOutsideCode(msg.extra.display_text, st.treatTwoDots); msg.extra.display_text = r.text; total += r.removed;
+      }
+      if (typeof msg.extra.original === 'string') {
+        const r = cleanOutsideCode(msg.extra.original, st.treatTwoDots); msg.extra.original = r.text; total += r.removed;
+      }
+    }
+    return total;
+  }
+
+  window.RemoveEllipsis.cleaner = { cleanOutsideCode, cleanMessageObject };
+
+  // ---------- Refresh ----------
+  function hardRefreshOnce() {
+    const ctx = getCtx();
+    if (!ctx) return;
+    try {
+      const nonce = Date.now();
+      if (Array.isArray(ctx.chat)) {
+        ctx.chat = ctx.chat.map(m => {
+          const clone = { ...m, _rmNonce: nonce };
+          if (clone.extra && typeof clone.extra === 'object') clone.extra = { ...clone.extra };
+          return clone;
+        });
+      }
+    } catch (e) { console.warn('rebind chat failed', e); }
+
+    try { ctx?.eventSource?.emit?.(ctx?.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' }); } catch(_) {}
+    try { ctx?.eventSource?.emit?.(ctx?.event_types?.MESSAGE_LIST_UPDATED, {}); } catch(_) {}
+    try { if (typeof ctx?.renderChat === 'function') ctx.renderChat(); } catch(_) {}
+    try { ctx?.saveChat?.(); } catch(_) {}
+
+    try { window.dispatchEvent(new Event('resize')); } catch(_) {}
+    const sc = typeof document !== 'undefined' ? document.querySelector('#chat, .chat, .dialogues') : null;
+    if (sc) { const y = sc.scrollTop; sc.scrollTop = y + 1; sc.scrollTop = y; }
+  }
+
+  function refreshChatUI() { hardRefreshOnce(); }
+
+  function refreshChatUIAndWait(after) {
+    return new Promise(resolve => {
+      hardRefreshOnce();
+      if (typeof requestAnimationFrame === 'function') {
+        requestAnimationFrame(() => {
+          hardRefreshOnce();
+          requestAnimationFrame(() => {
+            setTimeout(() => {
+              hardRefreshOnce();
+              try { typeof after === 'function' && after(); } catch(_) {}
+              resolve();
+            }, 0);
+          });
+        });
+      } else {
+        hardRefreshOnce();
+        setTimeout(() => { try { typeof after === 'function' && after(); } catch(_) {}; resolve(); }, 0);
+      }
     });
   }
 
-  async function loadAll() {
-    // โหลดตามลำดับให้แน่ใจว่า core พร้อมก่อน
-    await loadScript('cleaner.js');
-    await loadScript('refresh.js');
-    await loadScript('ui.js');
+  window.RemoveEllipsis.refresh = { refreshChatUI, refreshChatUIAndWait };
+
+  // ---------- UI ----------
+  function ensureFeedbackUI() {
+    if (typeof document === 'undefined') return;
+    if (document.getElementById('rm-ellipsis-toast')) return;
+    const style = document.createElement('style');
+    style.textContent = `
+      #rm-ellipsis-toast {
+        position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
+        padding: 8px 12px; background: rgba(0,0,0,.85); color: #fff; border-radius: 10px;
+        font-size: 12px; z-index: 99999; opacity: 0; transition: opacity .18s ease;
+        pointer-events: none;
+      }
+      .rm-ellipsis-overlay {
+        position: absolute; border-radius: 6px; inset: 0;
+        box-shadow: 0 0 0 2px rgba(255,200,0,.75);
+        animation: rmEllPulse 900ms ease 1;
+        pointer-events: none;
+      }
+      @keyframes rmEllPulse {
+        0% { box-shadow: 0 0 0 3px rgba(255,200,0,.85); }
+        100% { box-shadow: 0 0 0 0 rgba(255,200,0,0); }
+      }
+    `;
+    document.head.appendChild(style);
+    const toast = document.createElement('div');
+    toast.id = 'rm-ellipsis-toast';
+    document.body.appendChild(toast);
+  }
+  function toast(msg) {
+    ensureFeedbackUI();
+    if (typeof document === 'undefined') return;
+    const el = document.getElementById('rm-ellipsis-toast');
+    el.textContent = msg;
+    el.style.opacity = '1';
+    clearTimeout(el._t);
+    el._t = setTimeout(()=>{ el.style.opacity = '0'; }, 1200);
+  }
+  function overlayHighlight(node) {
+    const st = ensureSettings();
+    if (st.highlight === 'none' || !node || node.nodeType !== 1) return;
+    const anchor = node;
+    const prevPos = getComputedStyle(anchor).position;
+    if (prevPos === 'static') anchor.style.position = 'relative';
+    const ov = document.createElement('div');
+    ov.className = 'rm-ellipsis-overlay';
+    anchor.appendChild(ov);
+    setTimeout(() => {
+      ov.remove();
+      if (prevPos === 'static') anchor.style.position = '';
+    }, 900);
   }
 
-  // ---------- Wiring after modules loaded ----------
+  function getInputEl() {
+    if (typeof document === 'undefined') return null;
+    return (
+      document.querySelector('textarea, .chat-input textarea') ||
+      document.querySelector('[contenteditable="true"].chat-input, .st-user-input [contenteditable="true"]') ||
+      null
+    );
+  }
+  function sanitizeCurrentInput() {
+    const el = getInputEl();
+    if (!el) return 0;
+    const st = ensureSettings();
+    const val = ('value' in el) ? el.value : el.textContent;
+    const r = cleanOutsideCode(val, st.treatTwoDots);
+    if (r.removed > 0) {
+      if ('value' in el) el.value = r.text; else el.textContent = r.text;
+      const ev = { bubbles: true, cancelable: false };
+      el.dispatchEvent(new Event('input', ev));
+      el.dispatchEvent(new Event('change', ev));
+      el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Unidentified' }));
+    }
+    return r.removed;
+  }
+  function hookOutgoingInput() {
+    if (hookOutgoingInput._done || typeof document === 'undefined') return; hookOutgoingInput._done = true;
+
+    const form = document.querySelector('form.send-form, #send_form, form');
+    if (form) form.addEventListener('submit', async () => {
+      const n = sanitizeCurrentInput();
+      await refreshChatUIAndWait();
+      if (n) toast(`ลบ … ${n}`);
+    }, true);
+
+    const btn = document.querySelector('.send-button, button[type="submit"], #send_but, .st-send');
+    if (btn) btn.addEventListener('mousedown', async () => {
+      const n = sanitizeCurrentInput();
+      await refreshChatUIAndWait();
+      if (n) toast(`ลบ … ${n}`);
+    }, true);
+
+    const input = getInputEl();
+    if (input) input.addEventListener('keydown', async (e) => {
+      const isEnter = e.key==='Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !e.isComposing;
+      if (isEnter) {
+        const n = sanitizeCurrentInput();
+        await refreshChatUIAndWait();
+        if (n) toast(`ลบ … ${n}`);
+      }
+    }, true);
+
+    ['paste','drop'].forEach(evt=>{
+      (input||document).addEventListener(evt, () => setTimeout(sanitizeCurrentInput, 0), true);
+    });
+  }
+
+  async function removeEllipsesFromChat() {
+    const ctx = getCtx();
+    let removedSum = 0;
+    if (ctx?.chat?.forEach) ctx.chat.forEach(msg => { removedSum += cleanMessageObject(msg); });
+
+    await refreshChatUIAndWait();
+
+    const last = document.querySelector(
+      '.mes:last-child .mes_text, .message:last-child .message-text, .chat-message:last-child, .mes_markdown:last-child, .markdown:last-child'
+    );
+    overlayHighlight(last);
+    toast(removedSum > 0 ? `ลบแล้ว ${removedSum} ตัว` : 'ไม่มี …');
+  }
+
+  function observeUI() {
+    if (observeUI._observer || typeof document === 'undefined') return;
+    const mo = new MutationObserver(() => {
+      if (!document.getElementById('remove-ellipsis-ext__container')) {
+        addUI();
+      }
+    });
+    mo.observe(document.body, { childList: true, subtree: true });
+    observeUI._observer = mo;
+  }
+
+  function countEllipsesInChat() {
+    const ctx = getCtx();
+    let count = 0;
+    const st = ensureSettings();
+    if (ctx?.chat?.forEach) ctx.chat.forEach(msg => {
+      if (typeof msg.mes === 'string') count += cleanOutsideCode(msg.mes, st.treatTwoDots).removed;
+      if (msg.extra) {
+        if (typeof msg.extra.display_text === 'string') count += cleanOutsideCode(msg.extra.display_text, st.treatTwoDots).removed;
+        if (typeof msg.extra.original === 'string') count += cleanOutsideCode(msg.extra.original, st.treatTwoDots).removed;
+      }
+    });
+    toast(count > 0 ? `พบ … ${count} ตัว` : 'ไม่พบ …');
+  }
+
+  function addUI() {
+    if (typeof document === 'undefined') return;
+    if (document.querySelector('#remove-ellipsis-ext__container')) return;
+
+    const mount = document.querySelector(
+      '.chat-input-container,.input-group,.send-form,#send_form,.chat-controls,.st-user-input'
+    ) || document.body;
+
+    const box = document.createElement('div');
+    box.id='remove-ellipsis-ext__container';
+    box.style.display='flex';
+    box.style.alignItems='center';
+    box.style.gap='10px';
+    box.style.margin='6px 0';
+
+    const btn=document.createElement('button');
+    btn.type='button';
+    btn.textContent='Remove …';
+    btn.title='ลบ .../.. / … จากบทสนทนาทั้งหมด (ปลอดภัยต่อ Markdown)';
+    btn.style.padding='6px 10px';
+    btn.style.borderRadius='8px';
+    btn.style.border='1px solid var(--border-color,#ccc)';
+    btn.style.cursor='pointer';
+    btn.addEventListener('click', () => removeEllipsesFromChat());
+
+    const btnCheck=document.createElement('button');
+    btnCheck.type='button';
+    btnCheck.textContent='Check …';
+    btnCheck.title='ตรวจสอบจำนวน .../.. / … ในบทสนทนา';
+    btnCheck.style.padding='6px 10px';
+    btnCheck.style.borderRadius='8px';
+    btnCheck.style.border='1px solid var(--border-color,#ccc)';
+    btnCheck.style.cursor='pointer';
+    btnCheck.addEventListener('click', () => countEllipsesInChat());
+
+    const label=document.createElement('label');
+    label.style.display='inline-flex'; label.style.alignItems='center'; label.style.gap='6px'; label.style.cursor='pointer';
+    const chk=document.createElement('input'); chk.type='checkbox';
+    chk.checked=ensureSettings().autoRemove;
+    chk.onchange=()=>{ ensureSettings().autoRemove=chk.checked; saveSettings(); toast(`Auto Remove: ${chk.checked?'ON':'OFF'}`); };
+    const span=document.createElement('span'); span.textContent='Auto Remove';
+    label.append(chk,span);
+
+    const label2=document.createElement('label');
+    label2.style.display='inline-flex'; label2.style.alignItems='center'; label2.style.gap='6px'; label2.style.cursor='pointer';
+    const chk2=document.createElement('input'); chk2.type='checkbox';
+    chk2.checked=ensureSettings().treatTwoDots;
+    chk2.onchange=()=>{ ensureSettings().treatTwoDots=chk2.checked; saveSettings(); toast(`ลบ "..": ${chk2.checked?'ON':'OFF'}`); };
+    const span2=document.createElement('span'); span2.textContent='ลบ ".." ด้วย';
+    label2.append(chk2, span2);
+
+    box.append(btn, btnCheck, label, label2);
+
+    if (mount === document.body) {
+      box.style.position='fixed'; box.style.bottom='12px'; box.style.right='12px'; box.style.zIndex='9999';
+      document.body.appendChild(box);
+    } else {
+      mount.appendChild(box);
+    }
+
+    observeUI();
+  }
+
+  window.RemoveEllipsis.ui = { addUI, hookOutgoingInput, toast, overlayHighlight, checkEllipsesInChat: countEllipsesInChat };
+
+  // ---------- Wiring & Boot ----------
   function wireWithEvents() {
     const ctx = getCtx(); if (!ctx) return false;
     const { eventSource, event_types } = ctx || {};
@@ -65,9 +340,7 @@
     const { cleanOutsideCode } = window.RemoveEllipsis.cleaner;
     const { refreshChatUIAndWait } = window.RemoveEllipsis.refresh;
     const { addUI, hookOutgoingInput } = window.RemoveEllipsis.ui;
-    const settings = ensureSettings();
 
-    // ผู้ใช้ส่ง → ลบ raw ก่อน render แล้ว "รอ UI วาดเสร็จ" ค่อยโชว์ toast
     eventSource.on?.(event_types.MESSAGE_SENT, (p) => {
       (async () => {
         if (!p) return;
@@ -79,7 +352,6 @@
       })();
     });
 
-    // AI ตอบ → ถ้าเปิด Auto Remove ให้ลบ + รอ UI วาดเสร็จ + ไฮไลต์/แจ้งผล
     eventSource.on?.(event_types.MESSAGE_RECEIVED, (p) => {
       (async () => {
         const st = ensureSettings();
@@ -108,18 +380,27 @@
 
   function wireWithFallback() {
     const { addUI, hookOutgoingInput } = window.RemoveEllipsis.ui;
+    if (typeof document === 'undefined') return;
     document.addEventListener('DOMContentLoaded', () => { addUI(); hookOutgoingInput(); });
     setTimeout(() => { addUI(); hookOutgoingInput(); }, 800);
   }
 
-  // ---------- Boot ----------
-  (async function boot() {
-    try { await loadAll(); } catch (e) { console.error('[RemoveEllipsis] module load failed', e); }
+  function boot() {
+    try { /* all modules already bundled */ } catch (e) { console.error('[RemoveEllipsis] init failed', e); }
     window.RemoveEllipsis.core.ensureSettings();
 
     const ok = wireWithEvents();
     if (!ok) wireWithFallback();
 
     setTimeout(() => window.RemoveEllipsis.ui?.addUI?.(), 1000);
-  })();
+  }
+
+  if (typeof document !== 'undefined') {
+    boot();
+  }
+
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = window.RemoveEllipsis;
+  }
 })();
+
