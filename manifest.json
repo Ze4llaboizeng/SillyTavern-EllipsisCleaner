@@ -1,7 +1,8 @@
 {
-  "name": "Ellipsis Cleaner",
-  "description": "ลบ '...' ที่โมเดลใช้มากเกินไป",
-  "author": "your-github-username",
-  "version": "1.0",
-  "entry": "ellipsis-cleaner.js"
+  "display_name": "Remove Ellipsis",
+  "loading_order": 50,
+  "version": "1.0.0",
+  "author": "ชื่อคุณ",
+  "js": "index.js",
+  "minimum_client_version": "2025.1.0"
 }
