@@ -93,6 +93,19 @@
     try { window.dispatchEvent(new Event('resize')); } catch(_) {}
     const sc = typeof document !== 'undefined' ? document.querySelector('#chat, .chat, .dialogues') : null;
     if (sc) { const y = sc.scrollTop; sc.scrollTop = y + 1; sc.scrollTop = y; }
+
+    try {
+      const st = ensureSettings();
+      const { cleanOutsideCode } = window.RemoveEllipsis.cleaner || {};
+      if (cleanOutsideCode && typeof document !== 'undefined') {
+        document
+          .querySelectorAll('.mes_text, .message-text, .chat-message, .mes_markdown, .markdown')
+          .forEach(node => {
+            const r = cleanOutsideCode(node.textContent, st.treatTwoDots);
+            if (r.removed) node.textContent = r.text;
+          });
+      }
+    } catch(_) {}
   }
 
   function refreshChatUI() { hardRefreshOnce(); }
@@ -325,6 +338,29 @@
     } else {
       mount.appendChild(box);
     }
+
+    function adaptUI() {
+      const mobile = typeof window !== 'undefined' && window.innerWidth <= 600;
+      box.style.flexDirection = mobile ? 'column' : 'row';
+      box.style.alignItems = mobile ? 'stretch' : 'center';
+      box.style.gap = mobile ? '6px' : '10px';
+      [btn, btnCheck, label, label2].forEach(el => { el.style.width = mobile ? '100%' : ''; });
+      if (mount === document.body) {
+        if (mobile) {
+          box.style.left = '50%';
+          box.style.right = '';
+          box.style.transform = 'translateX(-50%)';
+          box.style.maxWidth = 'calc(100% - 24px)';
+        } else {
+          box.style.left = '';
+          box.style.right = '12px';
+          box.style.transform = '';
+          box.style.maxWidth = '';
+        }
+      }
+    }
+    window.addEventListener('resize', adaptUI);
+    adaptUI();
 
     observeUI();
   }
