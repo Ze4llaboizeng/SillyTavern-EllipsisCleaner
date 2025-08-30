@@ -1,26 +1,55 @@
-export function refreshChatUI() {
-  const ctx = window.SillyTavern?.getContext?.();
-  if (!ctx) return;
+/* Remove Ellipsis — refresh.js (Hard refresh + wait) */
+(() => {
+  const core = window.RemoveEllipsis?.core;
+  if (!core) return console.warn('[RemoveEllipsis] core missing for refresh');
+  const { getCtx } = core;
 
-  // rebind ctx.chat เพื่อให้ reference ใหม่
-  try {
-    const nonce = Date.now();
-    if (Array.isArray(ctx.chat)) {
-      ctx.chat = ctx.chat.map(m => ({ ...m, _rmNonce: nonce, ...(m.extra ? { extra: { ...m.extra } } : {}) }));
-    }
-  } catch (e) {}
+  function hardRefreshOnce() {
+    const ctx = getCtx();
+    if (!ctx) return;
 
-  // 🔑 ยิง event ที่มีใน build คุณ
-  try { ctx?.eventSource?.emit?.(ctx?.event_types?.MESSAGE_UPDATED, {}); } catch(_) {}
-  try { ctx?.eventSource?.emit?.(ctx?.event_types?.CHARACTER_MESSAGE_RENDERED, {}); } catch(_) {}
-  try { ctx?.eventSource?.emit?.(ctx?.event_types?.USER_MESSAGE_RENDERED, {}); } catch(_) {}
+    // rebind chat array + nonce เพื่อบังคับ reactive update
+    try {
+      const nonce = Date.now();
+      if (Array.isArray(ctx.chat)) {
+        ctx.chat = ctx.chat.map(m => {
+          const clone = { ...m, _rmNonce: nonce };
+          if (clone.extra && typeof clone.extra === 'object') clone.extra = { ...clone.extra };
+          return clone;
+        });
+      }
+    } catch (e) { console.warn('rebind chat failed', e); }
 
-  // เผื่อ: renderChat ถ้ามี
-  try { if (typeof ctx?.renderChat === 'function') ctx.renderChat(); } catch(_) {}
+    try { ctx?.eventSource?.emit?.(ctx?.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' }); } catch(_) {}
+    try { ctx?.eventSource?.emit?.(ctx?.event_types?.MESSAGE_LIST_UPDATED, {}); } catch(_) {}
+    try { if (typeof ctx?.renderChat === 'function') ctx.renderChat(); } catch(_) {}
+    try { ctx?.saveChat?.(); } catch(_) {}
 
-  // เผื่อ: save + resize + scroll nudge
-  try { ctx?.saveChat?.(); } catch(_) {}
-  try { window.dispatchEvent(new Event('resize')); } catch(_) {}
-  const sc = document.querySelector('#chat, .chat, .dialogues');
-  if (sc) { const y = sc.scrollTop; sc.scrollTop = y + 1; sc.scrollTop = y; }
-}
+    try { window.dispatchEvent(new Event('resize')); } catch(_) {}
+    const sc = document.querySelector('#chat, .chat, .dialogues');
+    if (sc) { const y = sc.scrollTop; sc.scrollTop = y + 1; sc.scrollTop = y; }
+  }
+
+  function refreshChatUI() { hardRefreshOnce(); }
+
+  // รอให้ UI วาดเสร็จจริง: 2x RAF + macrotask, แล้วยิง callback (เช่น toast/ไฮไลต์)
+  function refreshChatUIAndWait(after) {
+    return new Promise(resolve => {
+      hardRefreshOnce();
+      requestAnimationFrame(() => {
+        hardRefreshOnce();
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            hardRefreshOnce();
+            try { typeof after === 'function' && after(); } catch(_) {}
+            resolve();
+          }, 0);
+        });
+      });
+    });
+  }
+
+  window.RemoveEllipsis = Object.assign(window.RemoveEllipsis || {}, {
+    refresh: { refreshChatUI, refreshChatUIAndWait }
+  });
+})();
