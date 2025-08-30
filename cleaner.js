@@ -15,7 +15,7 @@
     const inlines = [];
     const sk2 = sk1.replace(inlineRegex, m => `@@INLINE${inlines.push(m)-1}@@`);
 
-    const pattern = treatTwoDots ? /(?<!\d)\.{2,}(?!\d)|…/g : /\.{3,}|…/g;
+    const pattern = treatTwoDots ? /(?<!\d)\.{2,}(?!\d)|…/g : /(?<!\d)\.{3,}(?!\d)|…/g;
 
     let removed = 0;
     const cleaned = sk2.replace(pattern, m => { removed += m.length; return ''; });
