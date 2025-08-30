@@ -102,7 +102,7 @@
       blocks.push(m);
       return key;
     });
-
+    
     // แยก inline code `...`
     const inlineRegex = /`[^`]*`/g;
     const inlines = [];
@@ -134,6 +134,80 @@
 
     return { text: restoredAll, removed };
   }
+
+  // ====== HOOK: ล้างฝั่ง "ผู้ใช้ส่ง" ให้ชัวร์ก่อน ST จะอ่านค่า ======
+function getInputEl() {
+  // รองรับทั้ง textarea และ contenteditable บางธีม
+  return (
+    document.querySelector('textarea, .chat-input textarea') ||
+    document.querySelector('[contenteditable="true"].chat-input, .st-user-input [contenteditable="true"]') ||
+    null
+  );
+}
+
+function sanitizeCurrentInput() {
+  const el = getInputEl();
+  if (!el) return 0;
+  const settings = ensureSettings();
+
+  // ดึงข้อความปัจจุบันจากอินพุต
+  const current = ('value' in el) ? el.value : el.textContent;
+  const r = cleanOutsideCode(current, !!settings.treatTwoDots);
+
+  // เขียนค่าคืนกลับไปที่อินพุต (ก่อนส่ง)
+  if (r.removed > 0) {
+    if ('value' in el) el.value = r.text;
+    else el.textContent = r.text;
+  }
+  return r.removed;
+}
+
+function hookOutgoingInput() {
+  if (hookOutgoingInput._done) return;
+  hookOutgoingInput._done = true;
+
+  // 1) ดัก submit ฟอร์ม (capture = true เพื่อให้มาก่อน handler อื่น)
+  const form = document.querySelector('form.send-form, #send_form, form');
+  if (form) {
+    form.addEventListener('submit', () => {
+      const removed = sanitizeCurrentInput();
+      if (removed) toast(`ลบ … ออกจากข้อความที่ส่ง (${removed})`);
+    }, true);
+  }
+
+  // 2) ดักปุ่มส่ง (ถ้ามีปุ่ม)
+  const sendBtn = document.querySelector('.send-button, button[type="submit"], #send_but, .st-send');
+  if (sendBtn) {
+    sendBtn.addEventListener('mousedown', () => {
+      const removed = sanitizeCurrentInput();
+      if (removed) toast(`ลบ … ออกจากข้อความที่ส่ง (${removed})`);
+    }, true);
+  }
+
+  // 3) ดัก Enter (กรณีส่งด้วย Enter)
+  const inputEl = getInputEl();
+  if (inputEl) {
+    inputEl.addEventListener('keydown', (e) => {
+      const isEnter = e.key === 'Enter';
+      const isSending = isEnter && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey;
+      const composing = e.isComposing; // IME ญี่ปุ่น/จีน
+      if (isEnter && composing) return; // อย่ารบกวน IME
+      if (isSending) {
+        const removed = sanitizeCurrentInput();
+        if (removed) toast(`ลบ … ออกจากข้อความที่ส่ง (${removed})`);
+      }
+    }, true);
+  }
+
+  // 4) ดัก paste/drop (ถ้าวางข้อความยาว ๆ มี “…”)
+  ['paste', 'drop'].forEach(evt => {
+    (inputEl || document).addEventListener(evt, () => {
+      // หน่วงนิดให้ค่าถูกใส่ลงอินพุตก่อน แล้วค่อย sanitize
+      setTimeout(() => sanitizeCurrentInput(), 0);
+    }, true);
+  });
+}
+
 
   function cleanMessageObject(msg) {
     if (!msg) return 0;
@@ -285,7 +359,10 @@
     });
 
     if (event_types.APP_READY) {
-      eventSource.on(event_types.APP_READY, addUI);
+  eventSource.on(event_types.APP_READY, () => {
+    addUI();
+    hookOutgoingInput(); // <--- เพิ่มตรงนี้ก็ได้
+  });
     } else {
       document.addEventListener('DOMContentLoaded', addUI, { once: true });
       setTimeout(addUI, 800);
@@ -336,6 +413,8 @@
     ensureSettings();
     const ok = wireWithEvents();
     if (!ok) wireWithFallback();
+    hookOutgoingInput();
+    
     setTimeout(addUI, 1000);
   })();
 })();
