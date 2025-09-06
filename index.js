@@ -426,7 +426,8 @@
     if (mount === document.body) {
       box.style.position = 'fixed';
       box.style.bottom = '12px';
-      box.style.right = '12px';
+      box.style.left = '12px';
+      box.style.right = '';
       box.style.zIndex = '9999';
       document.body.appendChild(box);
     } else {
@@ -445,12 +446,12 @@
           menu.style.right = 'auto';
           menu.style.width = '100%';
         } else {
-          box.style.left = '';
-          box.style.right = '12px';
+          box.style.left = '12px';
+          box.style.right = '';
           box.style.transform = '';
           box.style.maxWidth = '';
-          menu.style.left = 'auto';
-          menu.style.right = '0';
+          menu.style.left = '0';
+          menu.style.right = 'auto';
           menu.style.width = '';
         }
       }
