@@ -17,10 +17,24 @@
 }
 
 #remove-ellipsis-ext__menu {
-  background: #FFA94D;     /* ส้มอ่อนพื้นทึบ */
-  color: #111;             /* ปรับเป็นเข้มขึ้นเพื่อคอนทราสต์ */
-  border: 1px solid #E67700; /* เส้นขอบโทนส้มที่เข้มกว่าเล็กน้อย */
+  display: none;
+  flex-direction: column;
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 4px;
+  padding: 6px;
+
+  /* ใช้ตัวแปร + fallback */
+  background: var(--menu-bg, #FFA94D);
+  color: var(--menu-fg, #111);
+  border: 1px solid var(--menu-border, #E67700);
+
+  border-radius: 4px;
+  gap: 4px;
+  z-index: 10000;
 }
+
 
 
 #remove-ellipsis-ext__menu label {
