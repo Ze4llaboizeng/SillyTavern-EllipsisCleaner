@@ -17,20 +17,11 @@
 }
 
 #remove-ellipsis-ext__menu {
-  display: none;
-  flex-direction: column;
-  position: absolute;
-  top: 100%;
-  left: 0;
-  margin-top: 4px;
-  padding: 6px;
-  background: #FFA94D;    
-  color: #111;            
-  border: 1px solid #E67700; 
-  border-radius: 4px;
-  gap: 4px;
-  z-index: 10000;
+  background: #FFA94D;     /* ส้มอ่อนพื้นทึบ */
+  color: #111;             /* ปรับเป็นเข้มขึ้นเพื่อคอนทราสต์ */
+  border: 1px solid #E67700; /* เส้นขอบโทนส้มที่เข้มกว่าเล็กน้อย */
 }
+
 
 #remove-ellipsis-ext__menu label {
   display: inline-flex;
