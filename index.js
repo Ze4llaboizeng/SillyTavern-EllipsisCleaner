@@ -41,6 +41,7 @@
     const sk2 = sk1.replace(inlineRegex, m => `@@INLINE${inlines.push(m)-1}@@`);
 
     const basePattern = treatTwoDots ? /(?<!\d)\.{2,}(?!\d)|…/g : /(?<!\d)\.{3,}(?!\d)|…/g;
+
     const specialPattern = new RegExp(`(?:${basePattern.source})[ \t]*(?=[*"'])`, 'g');
     let removed = 0;
     const spCleaned = sk2.replace(specialPattern, m => { removed += m.length; return ''; });
