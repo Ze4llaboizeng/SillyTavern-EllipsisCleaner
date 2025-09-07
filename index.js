@@ -42,6 +42,13 @@
 
     const basePattern = treatTwoDots ? /(?<!\d)\.{2,}(?!\d)|…/g : /(?<!\d)\.{3,}(?!\d)|…/g;
 
+    const specialPatternAfter = new RegExp(`(?:${basePattern.source})[ \t]*(?=[*"'])`, 'g');
+    const specialPatternBefore = new RegExp(`(?<=[*"'])(?:${basePattern.source})[ \t]*`, 'g');
+    let removed = 0;
+    const spCleaned = sk2
+      .replace(specialPatternAfter, m => { removed += m.length; return ''; })
+      .replace(specialPatternBefore, m => { removed += m.length; return ''; })
+
     const specialPattern = new RegExp(`(?:${basePattern.source})[ \t]*(?=[*"'])`, 'g');
     let removed = 0;
     const spCleaned = sk2.replace(specialPattern, m => { removed += m.length; return ''; });
