@@ -33,6 +33,17 @@ assert.deepStrictEqual(
   cleanOutsideCode('Hello... World', true, false),
   { text: 'HelloWorld', removed: 4 }
 );
-
+// Should remove ellipsis before quotes or asterisks without adding space
+['"', "'", '*'].forEach(sym => {
+  assert.deepStrictEqual(
+    cleanOutsideCode(`Test...${sym}`, true),
+    { text: `Test${sym}`, removed: 3 }
+  );
+  assert.deepStrictEqual(
+    cleanOutsideCode(`Test...${sym}`, true, false),
+    { text: `Test${sym}`, removed: 3 }
+  );
+});
 console.log('Tests passed');
+
 
