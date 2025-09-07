@@ -28,5 +28,11 @@ assert.deepStrictEqual(
   { text: 'HelloWorld', removed: 3 }
 );
 
+// Should remove trailing space when not preserving space
+assert.deepStrictEqual(
+  cleanOutsideCode('Hello... World', true, false),
+  { text: 'HelloWorld', removed: 4 }
+);
+
 console.log('Tests passed');
 

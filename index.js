@@ -40,7 +40,10 @@
     const inlines = [];
     const sk2 = sk1.replace(inlineRegex, m => `@@INLINE${inlines.push(m)-1}@@`);
 
-    const pattern = treatTwoDots ? /(?<!\d)\.{2,}(?!\d)|…/g : /(?<!\d)\.{3,}(?!\d)|…/g;
+    const basePattern = treatTwoDots ? /(?<!\d)\.{2,}(?!\d)|…/g : /(?<!\d)\.{3,}(?!\d)|…/g;
+    const pattern = preserveSpace
+      ? basePattern
+      : new RegExp(`(?:${basePattern.source})[ \t]*`, 'g');
 
     let removed = 0;
     const cleaned = sk2.replace(pattern, (m, offset, str) => {
