@@ -34,29 +34,28 @@
 
     const blockRegex = /```[\s\S]*?```/g;
     const blocks = [];
-    const sk1 = text.replace(blockRegex, m => `@@BLOCK${blocks.push(m)-1}@@`);
+    const sk1 = text.replace(blockRegex, m => `@@BLOCK${blocks.push(m) - 1}@@`);
 
     const inlineRegex = /`[^`]*`/g;
     const inlines = [];
-    const sk2 = sk1.replace(inlineRegex, m => `@@INLINE${inlines.push(m)-1}@@`);
+    const sk2 = sk1.replace(inlineRegex, m => `@@INLINE${inlines.push(m) - 1}@@`);
 
-    const basePattern = treatTwoDots ? /(?<!\d)\.{2,}(?!\d)|…/g : /(?<!\d)\.{3,}(?!\d)|…/g;
+    const basePattern = treatTwoDots
+      ? /(?<!\d)\.{2,}(?!\d)|…/g
+      : /(?<!\d)\.{3,}(?!\d)|…/g;
 
-    const specialPatternAfter = new RegExp(`(?:${basePattern.source})[ \t]*(?=[*"'])`, 'g');
-    const specialPatternBefore = new RegExp(`(?<=[*"'])(?:${basePattern.source})[ \t]*`, 'g');
+    const specialAfter = new RegExp(`(?:${basePattern.source})[ \t]*(?=[*"'])`, 'g');
+    const specialBefore = new RegExp(`(?<=[*"'])(?:${basePattern.source})[ \t]*`, 'g');
     let removed = 0;
-    const spCleaned = sk2
-      .replace(specialPatternAfter, m => { removed += m.length; return ''; })
-      .replace(specialPatternBefore, m => { removed += m.length; return ''; })
+    let temp = sk2
+      .replace(specialBefore, m => { removed += m.length; return ''; })
+      .replace(specialAfter, m => { removed += m.length; return ''; });
 
-    const specialPattern = new RegExp(`(?:${basePattern.source})[ \t]*(?=[*"'])`, 'g');
-    let removed = 0;
-    const spCleaned = sk2.replace(specialPattern, m => { removed += m.length; return ''; });
     const pattern = preserveSpace
       ? basePattern
       : new RegExp(`(?:${basePattern.source})[ \t]*`, 'g');
 
-    const cleaned = spCleaned.replace(pattern, (m, offset, str) => {
+    temp = temp.replace(pattern, (m, offset, str) => {
       removed += m.length;
       if (!preserveSpace) return '';
       const prev = str[offset - 1];
@@ -67,8 +66,8 @@
       return ' ';
     });
 
-    let restored = cleaned.replace(/@@INLINE(\d+)@@/g, (_,i)=>inlines[i]);
-    restored = restored.replace(/@@BLOCK(\d+)@@/g,  (_,i)=>blocks[i]);
+    let restored = temp.replace(/@@INLINE(\d+)@@/g, (_, i) => inlines[i]);
+    restored = restored.replace(/@@BLOCK(\d+)@@/g, (_, i) => blocks[i]);
     return { text: restored, removed };
   }
 
