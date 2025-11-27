@@ -1,4 +1,4 @@
-/* Remove Ellipsis — Fixed UI & Code Protection */
+/* Remove Ellipsis — Instant Update & Fixed UI */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -12,7 +12,7 @@
         autoRemove: false, 
         treatTwoDots: true, 
         preserveSpace: true,
-        protectCode: true // Default to true to protect HTML/CSS/JS
+        protectCode: true 
     };
 
     // ========================================================================
@@ -46,7 +46,7 @@
         cleanText(text, settings) {
             if (typeof text !== 'string' || !text) return { text, removed: 0 };
 
-            // 1. Protection Phase: Hide Code/HTML before cleaning
+            // 1. Protection Phase
             const blocks = [];
             const inlines = [];
             const htmlTags = [];
@@ -57,14 +57,14 @@
                 processed = processed.replace(/```[\s\S]*?```/g, m => `@@BLOCK${blocks.push(m) - 1}@@`);
                 // Protect `inline code`
                 processed = processed.replace(/`[^`]*`/g, m => `@@INLINE${inlines.push(m) - 1}@@`);
-                // Protect <HTML tags> (catches <script>, <style>, <div class="...">)
+                // Protect <HTML tags>
                 processed = processed.replace(/<[^>]+>/g, m => `@@HTML${htmlTags.push(m) - 1}@@`);
             }
 
             // 2. Cleaning Phase
             const basePattern = settings.treatTwoDots
-                ? /(?<!\d)\.{2,}(?!\d)|…/g  // .. or ...
-                : /(?<!\d)\.{3,}(?!\d)|…/g; // ... only
+                ? /(?<!\d)\.{2,}(?!\d)|…/g
+                : /(?<!\d)\.{3,}(?!\d)|…/g;
 
             // Remove dots near quotes "..." -> "
             const specialAfter = new RegExp(`(?:${basePattern.source})[ \t]*(?=[*"'])`, 'g');
@@ -84,7 +84,7 @@
                 removedCount += match.length;
                 if (!settings.preserveSpace) return '';
 
-                // Smart Space: Only add space if needed
+                // Smart Space
                 const prev = fullStr[offset - 1];
                 const next = fullStr[offset + match.length];
                 const hasSpaceBefore = prev === undefined ? true : /\s/.test(prev);
@@ -94,7 +94,7 @@
                 return ' ';
             });
 
-            // 3. Restoration Phase: Put Code/HTML back
+            // 3. Restoration Phase
             if (settings.protectCode) {
                 processed = processed.replace(/@@HTML(\d+)@@/g, (_, i) => htmlTags[i]);
                 processed = processed.replace(/@@INLINE(\d+)@@/g, (_, i) => inlines[i]);
@@ -109,8 +109,6 @@
             const settings = Core.getSettings();
             let total = 0;
 
-            const fields = ['mes']; 
-            // Handle extra fields (display_text, original)
             if (msg.extra) {
                 ['display_text', 'original'].forEach(f => {
                     if (typeof msg.extra[f] === 'string') {
@@ -120,7 +118,6 @@
                     }
                 });
             }
-            // Handle main text
             if (typeof msg.mes === 'string') {
                 const r = this.cleanText(msg.mes, settings);
                 msg.mes = r.text;
@@ -143,16 +140,66 @@
             if (typeof $ !== 'undefined') $('.drawer-overlay').trigger('click');
         },
 
+        /**
+         * INSTANTLY cleans the text visible in the HTML DOM.
+         * This ensures the user sees changes immediately without waiting for a re-render.
+         */
+        forceDOMRefresh() {
+            if (typeof document === 'undefined') return;
+            const st = Core.getSettings();
+            
+            // Select all potential message containers
+            const selectors = '.mes_text, .message-text, .chat-message, .mes_markdown, .markdown';
+            const nodes = document.querySelectorAll(selectors);
+
+            nodes.forEach(node => {
+                // Use TreeWalker to find text nodes safely (skipping code blocks)
+                const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+                let textNode;
+                while ((textNode = walker.nextNode())) {
+                    let parent = textNode.parentNode;
+                    let skip = false;
+                    
+                    // Don't clean inside Code blocks or Preformatted text if protection is on
+                    if (st.protectCode) {
+                        while (parent && parent !== node) {
+                            if (parent.nodeName === 'CODE' || parent.nodeName === 'PRE') { 
+                                skip = true; 
+                                break; 
+                            }
+                            parent = parent.parentNode;
+                        }
+                    }
+                    if (skip) continue;
+
+                    // Apply cleaning to the visual text node
+                    const r = Cleaner.cleanText(textNode.nodeValue, st);
+                    if (r.removed > 0) {
+                        textNode.nodeValue = r.text;
+                    }
+                }
+            });
+        },
+
         async refreshChat() {
             const ctx = Core.getContext();
             if (!ctx) return;
             try {
-                // Force reactivity
+                // 1. Force React/Vue reactivity by updating nonce
                 const nonce = Date.now();
                 if (Array.isArray(ctx.chat)) ctx.chat = ctx.chat.map(m => ({ ...m, _rmNonce: nonce }));
                 
+                // 2. Save changes to storage
+                if (ctx.saveChat) await ctx.saveChat();
+
+                // 3. Emit update events
                 ctx.eventSource?.emit?.(ctx.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' });
+                
+                // 4. Trigger standard render
                 if (typeof ctx.renderChat === 'function') await ctx.renderChat();
+                
+                // 5. Hard Reload (fallback) if available
+                if (typeof ctx.reloadCurrentChat === 'function') await ctx.reloadCurrentChat();
             } catch (e) { console.warn(e); }
         }
     };
@@ -164,9 +211,17 @@
         async removeAll() {
             const ctx = Core.getContext();
             if (!ctx?.chat) return;
+            
             let count = 0;
+            // 1. Clean internal data
             ctx.chat.forEach(msg => count += Cleaner.cleanMessage(msg));
+            
+            // 2. Clean visual DOM immediately (Instant Feedback)
+            UI.forceDOMRefresh();
+
+            // 3. Persist and Refresh in background
             await UI.refreshChat();
+
             if (count > 0) UI.notify(`Removed ${count} ellipses.`, 'success');
             else UI.notify('No ellipses found.', 'info');
         },
@@ -179,17 +234,14 @@
             ctx.chat.forEach(msg => {
                 if (typeof msg.mes === 'string') count += Cleaner.cleanText(msg.mes, st).removed;
             });
-            await UI.refreshChat();
             UI.notify(count > 0 ? `Found ${count} ellipses.` : 'No ellipses found.', 'info');
         },
 
         injectSettings() {
             if (typeof $ === 'undefined') return;
             const container = $('#extensions_settings');
-            // If container missing or already injected, stop
             if (!container.length || $('#remove-ellipsis-settings').length) return;
 
-            // HTML Structure - Using custom classes to avoid ST conflicts
             const html = `
             <div id="remove-ellipsis-settings" class="extension_settings_block">
                 <div class="rm-settings-drawer">
@@ -198,27 +250,22 @@
                         <div class="rm-icon fa-solid fa-circle-chevron-down"></div>
                     </div>
                     <div class="rm-settings-content" style="display:none;">
-                        
                         <label class="checkbox_label" title="Clean automatically when sending/receiving">
                             <input type="checkbox" id="rm-ell-auto" />
                             <span>Auto Remove</span>
                         </label>
-                        
                         <label class="checkbox_label" title="Also remove '..' (2 dots)">
                             <input type="checkbox" id="rm-ell-twodots" />
                             <span>Remove ".."</span>
                         </label>
-                        
                         <label class="checkbox_label" title="Don't touch HTML tags or Code blocks">
                             <input type="checkbox" id="rm-ell-protect" />
                             <span>Protect Code & HTML</span>
                         </label>
-
                         <label class="checkbox_label" title="Leave a space where dots were removed">
                             <input type="checkbox" id="rm-ell-space" />
                             <span>Preserve Space</span>
                         </label>
-
                         <div style="display: flex; gap: 5px; margin-top: 10px;">
                             <button id="rm-ell-btn-clean" class="menu_button">Clean Now</button>
                             <button id="rm-ell-btn-check" class="menu_button">Check</button>
@@ -241,14 +288,13 @@
             if (this._eventsBound) return;
             this._eventsBound = true;
 
-            // 1. GLOBAL CLICK DELEGATION (Fixes "Click does nothing")
+            // Global Click Delegation (Fixes "Click does nothing")
             $(document).on('click', '#remove-ellipsis-settings .rm-settings-header', function(e) {
                 e.preventDefault();
                 e.stopPropagation();
                 const content = $(this).next('.rm-settings-content');
                 const icon = $(this).find('.rm-icon');
                 
-                // Toggle display directly
                 if (content.is(':visible')) {
                     content.slideUp(150);
                     icon.removeClass('down');
@@ -258,7 +304,7 @@
                 }
             });
 
-            // 2. Settings Changes
+            // Settings Changes
             $(document).on('change', '#rm-ell-auto', (e) => {
                 Core.getSettings().autoRemove = e.target.checked;
                 Core.saveSettings();
@@ -278,7 +324,7 @@
                 UI.notify(`Code Protection: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
 
-            // 3. Action Buttons
+            // Action Buttons
             $(document).on('click', '#rm-ell-btn-clean', async (e) => {
                 e.preventDefault();
                 UI.closeDrawer();
@@ -293,17 +339,14 @@
 
         init() {
             const ctx = Core.getContext();
-            // Bind listeners even if UI isn't ready yet
             this.bindEvents(); 
             
-            // Watch for messages
             if (ctx?.eventSource) {
                 ctx.eventSource.on(ctx.event_types.MESSAGE_RECEIVED, async () => {
                     if (Core.getSettings().autoRemove) await App.removeAll();
                 });
             }
 
-            // Inject Input hooks
             const hookInput = () => {
                 const form = document.querySelector('form.send-form, #send_form');
                 if (form) form.addEventListener('submit', () => {
@@ -312,17 +355,14 @@
             };
             hookInput();
 
-            // Inject UI immediately
             this.injectSettings();
         }
     };
 
-    // Bootstrapping
     (function boot() {
         if (typeof document === 'undefined') return;
         const onReady = () => {
             App.init();
-            // Watch for UI rebuilds (e.g. switching tabs)
             const obs = new MutationObserver(() => App.injectSettings());
             const target = document.querySelector('#content') || document.body;
             obs.observe(target, { childList: true, subtree: true });
