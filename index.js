@@ -1,4 +1,4 @@
-/* Remove Ellipsis — Immediate Update Fix */
+/* Remove Ellipsis — Code & Content Protection Fix */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -46,23 +46,36 @@
         cleanText(text, settings) {
             if (typeof text !== 'string' || !text) return { text, removed: 0 };
 
-            // 1. Protection Phase
+            // --- 1. Protection Phase ---
             const blocks = [];
             const inlines = [];
+            const htmlBlocks = [];
             const htmlTags = [];
             let processed = text;
 
             if (settings.protectCode) {
+                // A. Protect Markdown Code Blocks (```...```)
                 processed = processed.replace(/```[\s\S]*?```/g, m => `@@BLOCK${blocks.push(m) - 1}@@`);
+                
+                // B. Protect Inline Markdown Code (`...`)
                 processed = processed.replace(/`[^`]*`/g, m => `@@INLINE${inlines.push(m) - 1}@@`);
-                processed = processed.replace(/<[^>]+>/g, m => `@@HTML${htmlTags.push(m) - 1}@@`);
+
+                // C. Protect HTML CONTENT blocks (script, style, pre, code)
+                // This preserves "..." inside <script>...</script> or <style>...</style>
+                const sensitiveTags = /<(script|style|pre|code)\b[^>]*>[\s\S]*?<\/\1>/gi;
+                processed = processed.replace(sensitiveTags, m => `@@HTMLBLOCK${htmlBlocks.push(m) - 1}@@`);
+
+                // D. Protect Generic HTML Tags (attributes like href="..." or src="...")
+                // We do this LAST to ensure we don't break the blocks above
+                processed = processed.replace(/<[^>]+>/g, m => `@@HTMLTAG${htmlTags.push(m) - 1}@@`);
             }
 
-            // 2. Cleaning Phase
+            // --- 2. Cleaning Phase ---
             const basePattern = settings.treatTwoDots
                 ? /(?<!\d)\.{2,}(?!\d)|…/g
                 : /(?<!\d)\.{3,}(?!\d)|…/g;
 
+            // Remove dots near quotes
             const specialAfter = new RegExp(`(?:${basePattern.source})[ \t]*(?=[*"'])`, 'g');
             const specialBefore = new RegExp(`(?<=[*"'])(?:${basePattern.source})[ \t]*`, 'g');
             
@@ -71,6 +84,7 @@
                 .replace(specialBefore, m => { removedCount += m.length; return ''; })
                 .replace(specialAfter, m => { removedCount += m.length; return ''; });
 
+            // Main removal
             const mainPattern = settings.preserveSpace
                 ? basePattern
                 : new RegExp(`(?:${basePattern.source})[ \t]*`, 'g');
@@ -88,9 +102,11 @@
                 return ' ';
             });
 
-            // 3. Restoration Phase
+            // --- 3. Restoration Phase ---
             if (settings.protectCode) {
-                processed = processed.replace(/@@HTML(\d+)@@/g, (_, i) => htmlTags[i]);
+                // Restore in reverse order of protection for safety
+                processed = processed.replace(/@@HTMLTAG(\d+)@@/g, (_, i) => htmlTags[i]);
+                processed = processed.replace(/@@HTMLBLOCK(\d+)@@/g, (_, i) => htmlBlocks[i]);
                 processed = processed.replace(/@@INLINE(\d+)@@/g, (_, i) => inlines[i]);
                 processed = processed.replace(/@@BLOCK(\d+)@@/g, (_, i) => blocks[i]);
             }
@@ -134,16 +150,12 @@
             if (typeof $ !== 'undefined') $('.drawer-overlay').trigger('click');
         },
 
-        /**
-         * UPDATED: Forces an immediate visual update on the screen 
-         * AND saves the chat to the backend.
-         */
         async refreshChat(forceVisualUpdate = false) {
             const ctx = Core.getContext();
             if (!ctx) return;
 
             try {
-                // 1. Save Data (Persist changes to storage)
+                // 1. Save Data
                 if (typeof ctx.saveChat === 'function') await ctx.saveChat();
 
                 // 2. Notify System
@@ -151,31 +163,25 @@
                 if (Array.isArray(ctx.chat)) ctx.chat = ctx.chat.map(m => ({ ...m, _rmNonce: nonce }));
                 ctx.eventSource?.emit?.(ctx.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' });
 
-                // 3. Try Standard Re-render
+                // 3. Trigger Re-render
                 if (typeof ctx.renderChat === 'function') await ctx.renderChat();
 
-                // 4. IMMEDIATE VISUAL PATCH (The Fix)
-                // If standard render is too slow/lazy, we manually update the DOM text nodes.
+                // 4. Force Immediate Visual Update (Direct DOM Manipulation)
                 if (forceVisualUpdate && typeof document !== 'undefined') {
                     const settings = Core.getSettings();
-                    // Selectors for message text containers
                     const selector = '.mes_text, .message-text, .chat-message .mes';
                     const nodes = document.querySelectorAll(selector);
                     
                     nodes.forEach(node => {
-                        // TreeWalker lets us touch ONLY text, keeping HTML tags safe
                         const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
                         let tn;
                         while (tn = walker.nextNode()) {
-                            // Don't touch text inside <pre> or <code> blocks visually
-                            if (tn.parentNode.closest('code, pre')) continue;
+                            // SKIP text inside code/pre blocks in the DOM
+                            if (tn.parentNode.closest('code, pre, script, style')) continue;
 
                             const original = tn.nodeValue;
-                            // We use the cleaner on the visual text
                             const res = Cleaner.cleanText(original, settings);
-                            if (res.removed > 0) {
-                                tn.nodeValue = res.text;
-                            }
+                            if (res.removed > 0) tn.nodeValue = res.text;
                         }
                     });
                 }
@@ -192,7 +198,7 @@
             if (!ctx?.chat) return;
             let count = 0;
             
-            // Update Data
+            // Clean Data
             ctx.chat.forEach(msg => count += Cleaner.cleanMessage(msg));
             
             // Force Visual Refresh
@@ -210,7 +216,6 @@
             ctx.chat.forEach(msg => {
                 if (typeof msg.mes === 'string') count += Cleaner.cleanText(msg.mes, st).removed;
             });
-            // Just counting doesn't need a visual force-update
             UI.notify(count > 0 ? `Found ${count} ellipses.` : 'No ellipses found.', 'info');
         },
 
@@ -322,7 +327,6 @@
                 });
             }
 
-            // Input Hook
             const form = document.querySelector('form.send-form, #send_form');
             if (form) form.addEventListener('submit', () => {
                if (Core.getSettings().autoRemove) setTimeout(() => App.removeAll(), 50);
