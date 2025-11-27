@@ -1,4 +1,4 @@
-/* Remove Ellipsis — Code & HTML Content Protection */
+/* Remove Ellipsis — HTML Block Protection Added */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -46,33 +46,39 @@
         cleanText(text, settings) {
             if (typeof text !== 'string' || !text) return { text, removed: 0 };
 
-            // Storage for masked content
-            const blocks = [];    // Markdown ```blocks```
-            const inlines = [];   // Markdown `inline`
-            const scripts = [];   // <script> content
-            const styles = [];    // <style> content
-            const pres = [];      // <pre> content
-            const codes = [];     // <code> content
-            const tags = [];      // Generic HTML tags <div...>
+            // Storage arrays for protected content
+            const blocks = [];
+            const inlines = [];
+            const scripts = [];
+            const styles = [];
+            const pres = [];
+            const codes = [];
+            const paragraphs = []; // New: <p>
+            const divs = [];       // New: <div>
+            const spans = [];      // New: <span>
+            const tags = [];       // Generic tags
 
             let processed = text;
 
             if (settings.protectCode) {
-                // 1. Protect Markdown Code Blocks
+                // 1. Protect Markdown Blocks
                 processed = processed.replace(/```[\s\S]*?```/g, m => `@@BLOCK${blocks.push(m) - 1}@@`);
-                
-                // 2. Protect Inline Code
                 processed = processed.replace(/`[^`]*`/g, m => `@@INLINE${inlines.push(m) - 1}@@`);
 
-                // 3. Protect HTML Code Blocks (Content Protection)
-                // This prevents cleaning inside scripts, styles, pre, and code tags
+                // 2. Protect Specific HTML Content Blocks
+                // This preserves EVERYTHING inside these tags (including dots)
                 processed = processed.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, m => `@@SCRIPT${scripts.push(m) - 1}@@`);
                 processed = processed.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, m => `@@STYLE${styles.push(m) - 1}@@`);
                 processed = processed.replace(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi, m => `@@PRE${pres.push(m) - 1}@@`);
                 processed = processed.replace(/<code\b[^>]*>[\s\S]*?<\/code>/gi, m => `@@CODE${codes.push(m) - 1}@@`);
+                
+                // NEW: Protect HTML Structural/Text Blocks (<p>, <div>, <span>)
+                // If you wrap text in these, it will NOT be cleaned.
+                processed = processed.replace(/<p\b[^>]*>[\s\S]*?<\/p>/gi, m => `@@PARA${paragraphs.push(m) - 1}@@`);
+                processed = processed.replace(/<div\b[^>]*>[\s\S]*?<\/div>/gi, m => `@@DIV${divs.push(m) - 1}@@`);
+                processed = processed.replace(/<span\b[^>]*>[\s\S]*?<\/span>/gi, m => `@@SPAN${spans.push(m) - 1}@@`);
 
-                // 4. Protect Generic HTML Tags (Attribute Protection)
-                // e.g. <img src="image.jpg"> - the tag is protected, but text outside is not.
+                // 3. Protect Generic HTML Attributes (e.g. <img src="...">)
                 processed = processed.replace(/<[^>]+>/g, m => `@@TAG${tags.push(m) - 1}@@`);
             }
 
@@ -81,7 +87,6 @@
                 ? /(?<!\d)\.{2,}(?!\d)|…/g
                 : /(?<!\d)\.{3,}(?!\d)|…/g;
 
-            // Remove dots near quotes "..." -> "
             const specialAfter = new RegExp(`(?:${basePattern.source})[ \t]*(?=[*"'])`, 'g');
             const specialBefore = new RegExp(`(?<=[*"'])(?:${basePattern.source})[ \t]*`, 'g');
             
@@ -90,7 +95,6 @@
                 .replace(specialBefore, m => { removedCount += m.length; return ''; })
                 .replace(specialAfter, m => { removedCount += m.length; return ''; });
 
-            // Main removal
             const mainPattern = settings.preserveSpace
                 ? basePattern
                 : new RegExp(`(?:${basePattern.source})[ \t]*`, 'g');
@@ -110,8 +114,11 @@
 
             // --- Restoration Phase ---
             if (settings.protectCode) {
-                // Restore in reverse order of protection mostly, but specific keys ensure safety
+                // Unmask in safe order
                 processed = processed.replace(/@@TAG(\d+)@@/g, (_, i) => tags[i]);
+                processed = processed.replace(/@@SPAN(\d+)@@/g, (_, i) => spans[i]);
+                processed = processed.replace(/@@DIV(\d+)@@/g, (_, i) => divs[i]);
+                processed = processed.replace(/@@PARA(\d+)@@/g, (_, i) => paragraphs[i]);
                 processed = processed.replace(/@@CODE(\d+)@@/g, (_, i) => codes[i]);
                 processed = processed.replace(/@@PRE(\d+)@@/g, (_, i) => pres[i]);
                 processed = processed.replace(/@@STYLE(\d+)@@/g, (_, i) => styles[i]);
@@ -165,14 +172,12 @@
 
             try {
                 if (typeof ctx.saveChat === 'function') await ctx.saveChat();
-
                 const nonce = Date.now();
                 if (Array.isArray(ctx.chat)) ctx.chat = ctx.chat.map(m => ({ ...m, _rmNonce: nonce }));
                 ctx.eventSource?.emit?.(ctx.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' });
-
                 if (typeof ctx.renderChat === 'function') await ctx.renderChat();
 
-                // Force Immediate Visual Update for Text Nodes
+                // Force Immediate Visual Update
                 if (forceVisualUpdate && typeof document !== 'undefined') {
                     const settings = Core.getSettings();
                     const selector = '.mes_text, .message-text, .chat-message .mes';
@@ -182,8 +187,9 @@
                         const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
                         let tn;
                         while (tn = walker.nextNode()) {
-                            // SKIP visual update for code blocks/pre tags to avoid layout shift
-                            if (tn.parentNode.closest('code, pre, script, style')) continue;
+                            // Don't visually clean inside code/pre/script/style/p/div/span if protected
+                            // Note: This matches PARENT nodes. If your P tag is user-generated in markdown, it might be protected here.
+                            if (tn.parentNode.closest('code, pre, script, style, p, div, span')) continue;
 
                             const original = tn.nodeValue;
                             const res = Cleaner.cleanText(original, settings);
@@ -205,7 +211,7 @@
             let count = 0;
             ctx.chat.forEach(msg => count += Cleaner.cleanMessage(msg));
             await UI.refreshChat(true); 
-            if (count > 0) UI.notify(`Removed ${count} ellipses.`, 'success');
+            if (count > 0) UI.notify(`Removed ${count} ellipses & Updated Chat.`, 'success');
             else UI.notify('No ellipses found.', 'info');
         },
 
@@ -233,19 +239,19 @@
                         <div class="rm-icon fa-solid fa-circle-chevron-down"></div>
                     </div>
                     <div class="rm-settings-content" style="display:none;">
-                        <label class="checkbox_label" title="Clean automatically when sending/receiving">
+                        <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-auto" />
                             <span>Auto Remove</span>
                         </label>
-                        <label class="checkbox_label" title="Also remove '..' (2 dots)">
+                        <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-twodots" />
                             <span>Remove ".."</span>
                         </label>
-                        <label class="checkbox_label" title="Don't touch HTML tags or Code blocks">
+                        <label class="checkbox_label" title="Protects HTML blocks like <p>, <div>, <span>, <code>">
                             <input type="checkbox" id="rm-ell-protect" />
                             <span>Protect Code & HTML</span>
                         </label>
-                        <label class="checkbox_label" title="Leave a space where dots were removed">
+                        <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-space" />
                             <span>Preserve Space</span>
                         </label>
@@ -295,7 +301,7 @@
             $(document).on('change', '#rm-ell-space', (e) => updateSetting('preserveSpace', e.target.checked));
             $(document).on('change', '#rm-ell-protect', (e) => {
                 updateSetting('protectCode', e.target.checked);
-                UI.notify(`Code Protection: ${e.target.checked ? 'ON' : 'OFF'}`);
+                UI.notify(`HTML Protection: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
 
             $(document).on('click', '#rm-ell-btn-clean', async (e) => {
@@ -313,18 +319,15 @@
         init() {
             const ctx = Core.getContext();
             this.bindEvents(); 
-            
             if (ctx?.eventSource) {
                 ctx.eventSource.on(ctx.event_types.MESSAGE_RECEIVED, async () => {
                     if (Core.getSettings().autoRemove) await App.removeAll();
                 });
             }
-
             const form = document.querySelector('form.send-form, #send_form');
             if (form) form.addEventListener('submit', () => {
                if (Core.getSettings().autoRemove) setTimeout(() => App.removeAll(), 50);
             }, true);
-
             this.injectSettings();
         }
     };
