@@ -6,6 +6,22 @@
     padding-top: 5px;
 }
 
+/* Ensure text is visible in all themes */
+#remove-ellipsis-settings .inline-drawer-content {
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 0 0 5px 5px;
+    margin-top: 2px;
+    color: var(--SmartThemeBodyColor); /* Fixes invisible text */
+}
+
+#remove-ellipsis-settings .checkbox_label {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+    cursor: pointer;
+    color: var(--SmartThemeBodyColor);
+}
+
 #remove-ellipsis-settings .menu_button {
     flex: 1;
     padding: 8px;
@@ -15,13 +31,13 @@
     border-radius: 5px;
     color: var(--SmartThemeBodyColor);
     transition: background-color 0.2s;
+    font-weight: bold;
 }
 
 #remove-ellipsis-settings .menu_button:hover {
     background-color: var(--SmartThemeButtonHoverColor);
 }
 
-/* Header styling to match SillyTavern drawers */
 #remove-ellipsis-settings .inline-drawer-header {
     display: flex;
     justify-content: space-between;
@@ -31,14 +47,9 @@
     background-color: rgba(0, 0, 0, 0.2);
     border-radius: 5px;
     transition: background-color 0.2s;
+    color: var(--SmartThemeBodyColor);
 }
 
 #remove-ellipsis-settings .inline-drawer-header:hover {
     background-color: rgba(255, 255, 255, 0.1);
-}
-
-#remove-ellipsis-settings .inline-drawer-content {
-    background-color: rgba(0, 0, 0, 0.1);
-    border-radius: 0 0 5px 5px;
-    margin-top: 2px;
 }
