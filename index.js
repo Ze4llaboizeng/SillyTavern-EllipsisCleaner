@@ -302,7 +302,7 @@
         toast(removedSum > 0 ? `ลบแล้ว ${removedSum} ตัว` : 'ไม่มี …');
     }
 
-    function countEllipsesInChat() {
+    async function countEllipsesInChat() {
         const ctx = getCtx();
         let count = 0;
         const st = ensureSettings();
@@ -313,6 +313,10 @@
                 if (typeof msg.extra.original === 'string') count += cleanOutsideCode(msg.extra.original, st.treatTwoDots, st.preserveSpace).removed;
             }
         });
+
+        // Ensure UI is fresh before reporting
+        await refreshChatUIAndWait();
+        
         toast(count > 0 ? `พบ … ${count} ตัว` : 'ไม่พบ …');
     }
 
@@ -392,12 +396,12 @@
                 saveSettings();
             });
 
-            $('#rm-ell-btn-clean').on('click', () => {
-                removeEllipsesFromChat();
+            $('#rm-ell-btn-clean').on('click', async () => {
+                await removeEllipsesFromChat();
             });
 
-            $('#rm-ell-btn-check').on('click', () => {
-                countEllipsesInChat();
+            $('#rm-ell-btn-check').on('click', async () => {
+                await countEllipsesInChat();
             });
 
             return true;
