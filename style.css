@@ -1,27 +1,44 @@
-/* Style for Remove Ellipsis Extension Settings */
+/* Remove Ellipsis - Extension Settings Styling */
 
 #remove-ellipsis-settings {
-    margin-top: 10px;
+    margin-top: 5px;
     border-top: 1px solid var(--SmartThemeBorderColor);
-    padding-top: 10px;
+    padding-top: 5px;
 }
 
 #remove-ellipsis-settings .menu_button {
     flex: 1;
+    padding: 8px;
+    cursor: pointer;
+    background-color: var(--SmartThemeButtonColor);
+    border: 1px solid var(--SmartThemeBorderColor);
+    border-radius: 5px;
+    color: var(--SmartThemeBodyColor);
+    transition: background-color 0.2s;
 }
 
-/* Ensure the drawer aligns with ST styles */
+#remove-ellipsis-settings .menu_button:hover {
+    background-color: var(--SmartThemeButtonHoverColor);
+}
+
+/* Header styling to match SillyTavern drawers */
 #remove-ellipsis-settings .inline-drawer-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
     cursor: pointer;
-    padding: 5px;
-    background-color: var(--SmartThemeBlurTintColor);
+    padding: 8px;
+    background-color: rgba(0, 0, 0, 0.2);
     border-radius: 5px;
+    transition: background-color 0.2s;
+}
+
+#remove-ellipsis-settings .inline-drawer-header:hover {
+    background-color: rgba(255, 255, 255, 0.1);
 }
 
 #remove-ellipsis-settings .inline-drawer-content {
     background-color: rgba(0, 0, 0, 0.1);
     border-radius: 0 0 5px 5px;
+    margin-top: 2px;
 }
