@@ -1,4 +1,4 @@
-/* Remove Ellipsis — Code & Content Protection Fix */
+/* Remove Ellipsis — Code & HTML Content Protection */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -16,7 +16,7 @@
     };
 
     // ========================================================================
-    // MODULE: Core (Settings)
+    // MODULE: Core
     // ========================================================================
     const Core = {
         getContext() {
@@ -46,36 +46,42 @@
         cleanText(text, settings) {
             if (typeof text !== 'string' || !text) return { text, removed: 0 };
 
-            // --- 1. Protection Phase ---
-            const blocks = [];
-            const inlines = [];
-            const htmlBlocks = [];
-            const htmlTags = [];
+            // Storage for masked content
+            const blocks = [];    // Markdown ```blocks```
+            const inlines = [];   // Markdown `inline`
+            const scripts = [];   // <script> content
+            const styles = [];    // <style> content
+            const pres = [];      // <pre> content
+            const codes = [];     // <code> content
+            const tags = [];      // Generic HTML tags <div...>
+
             let processed = text;
 
             if (settings.protectCode) {
-                // A. Protect Markdown Code Blocks (```...```)
+                // 1. Protect Markdown Code Blocks
                 processed = processed.replace(/```[\s\S]*?```/g, m => `@@BLOCK${blocks.push(m) - 1}@@`);
                 
-                // B. Protect Inline Markdown Code (`...`)
+                // 2. Protect Inline Code
                 processed = processed.replace(/`[^`]*`/g, m => `@@INLINE${inlines.push(m) - 1}@@`);
 
-                // C. Protect HTML CONTENT blocks (script, style, pre, code)
-                // This preserves "..." inside <script>...</script> or <style>...</style>
-                const sensitiveTags = /<(script|style|pre|code)\b[^>]*>[\s\S]*?<\/\1>/gi;
-                processed = processed.replace(sensitiveTags, m => `@@HTMLBLOCK${htmlBlocks.push(m) - 1}@@`);
+                // 3. Protect HTML Code Blocks (Content Protection)
+                // This prevents cleaning inside scripts, styles, pre, and code tags
+                processed = processed.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, m => `@@SCRIPT${scripts.push(m) - 1}@@`);
+                processed = processed.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, m => `@@STYLE${styles.push(m) - 1}@@`);
+                processed = processed.replace(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi, m => `@@PRE${pres.push(m) - 1}@@`);
+                processed = processed.replace(/<code\b[^>]*>[\s\S]*?<\/code>/gi, m => `@@CODE${codes.push(m) - 1}@@`);
 
-                // D. Protect Generic HTML Tags (attributes like href="..." or src="...")
-                // We do this LAST to ensure we don't break the blocks above
-                processed = processed.replace(/<[^>]+>/g, m => `@@HTMLTAG${htmlTags.push(m) - 1}@@`);
+                // 4. Protect Generic HTML Tags (Attribute Protection)
+                // e.g. <img src="image.jpg"> - the tag is protected, but text outside is not.
+                processed = processed.replace(/<[^>]+>/g, m => `@@TAG${tags.push(m) - 1}@@`);
             }
 
-            // --- 2. Cleaning Phase ---
+            // --- Cleaning Phase ---
             const basePattern = settings.treatTwoDots
                 ? /(?<!\d)\.{2,}(?!\d)|…/g
                 : /(?<!\d)\.{3,}(?!\d)|…/g;
 
-            // Remove dots near quotes
+            // Remove dots near quotes "..." -> "
             const specialAfter = new RegExp(`(?:${basePattern.source})[ \t]*(?=[*"'])`, 'g');
             const specialBefore = new RegExp(`(?<=[*"'])(?:${basePattern.source})[ \t]*`, 'g');
             
@@ -102,11 +108,14 @@
                 return ' ';
             });
 
-            // --- 3. Restoration Phase ---
+            // --- Restoration Phase ---
             if (settings.protectCode) {
-                // Restore in reverse order of protection for safety
-                processed = processed.replace(/@@HTMLTAG(\d+)@@/g, (_, i) => htmlTags[i]);
-                processed = processed.replace(/@@HTMLBLOCK(\d+)@@/g, (_, i) => htmlBlocks[i]);
+                // Restore in reverse order of protection mostly, but specific keys ensure safety
+                processed = processed.replace(/@@TAG(\d+)@@/g, (_, i) => tags[i]);
+                processed = processed.replace(/@@CODE(\d+)@@/g, (_, i) => codes[i]);
+                processed = processed.replace(/@@PRE(\d+)@@/g, (_, i) => pres[i]);
+                processed = processed.replace(/@@STYLE(\d+)@@/g, (_, i) => styles[i]);
+                processed = processed.replace(/@@SCRIPT(\d+)@@/g, (_, i) => scripts[i]);
                 processed = processed.replace(/@@INLINE(\d+)@@/g, (_, i) => inlines[i]);
                 processed = processed.replace(/@@BLOCK(\d+)@@/g, (_, i) => blocks[i]);
             }
@@ -138,7 +147,7 @@
     };
 
     // ========================================================================
-    // MODULE: UI (Visuals & Updates)
+    // MODULE: UI
     // ========================================================================
     const UI = {
         notify(msg, type = 'info') {
@@ -155,18 +164,15 @@
             if (!ctx) return;
 
             try {
-                // 1. Save Data
                 if (typeof ctx.saveChat === 'function') await ctx.saveChat();
 
-                // 2. Notify System
                 const nonce = Date.now();
                 if (Array.isArray(ctx.chat)) ctx.chat = ctx.chat.map(m => ({ ...m, _rmNonce: nonce }));
                 ctx.eventSource?.emit?.(ctx.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' });
 
-                // 3. Trigger Re-render
                 if (typeof ctx.renderChat === 'function') await ctx.renderChat();
 
-                // 4. Force Immediate Visual Update (Direct DOM Manipulation)
+                // Force Immediate Visual Update for Text Nodes
                 if (forceVisualUpdate && typeof document !== 'undefined') {
                     const settings = Core.getSettings();
                     const selector = '.mes_text, .message-text, .chat-message .mes';
@@ -176,7 +182,7 @@
                         const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
                         let tn;
                         while (tn = walker.nextNode()) {
-                            // SKIP text inside code/pre blocks in the DOM
+                            // SKIP visual update for code blocks/pre tags to avoid layout shift
                             if (tn.parentNode.closest('code, pre, script, style')) continue;
 
                             const original = tn.nodeValue;
@@ -190,21 +196,16 @@
     };
 
     // ========================================================================
-    // MODULE: App (Logic)
+    // MODULE: App
     // ========================================================================
     const App = {
         async removeAll() {
             const ctx = Core.getContext();
             if (!ctx?.chat) return;
             let count = 0;
-            
-            // Clean Data
             ctx.chat.forEach(msg => count += Cleaner.cleanMessage(msg));
-            
-            // Force Visual Refresh
             await UI.refreshChat(true); 
-            
-            if (count > 0) UI.notify(`Removed ${count} ellipses & Updated Chat.`, 'success');
+            if (count > 0) UI.notify(`Removed ${count} ellipses.`, 'success');
             else UI.notify('No ellipses found.', 'info');
         },
 
@@ -232,27 +233,22 @@
                         <div class="rm-icon fa-solid fa-circle-chevron-down"></div>
                     </div>
                     <div class="rm-settings-content" style="display:none;">
-                        
                         <label class="checkbox_label" title="Clean automatically when sending/receiving">
                             <input type="checkbox" id="rm-ell-auto" />
                             <span>Auto Remove</span>
                         </label>
-                        
                         <label class="checkbox_label" title="Also remove '..' (2 dots)">
                             <input type="checkbox" id="rm-ell-twodots" />
                             <span>Remove ".."</span>
                         </label>
-                        
                         <label class="checkbox_label" title="Don't touch HTML tags or Code blocks">
                             <input type="checkbox" id="rm-ell-protect" />
                             <span>Protect Code & HTML</span>
                         </label>
-
                         <label class="checkbox_label" title="Leave a space where dots were removed">
                             <input type="checkbox" id="rm-ell-space" />
                             <span>Preserve Space</span>
                         </label>
-
                         <div style="display: flex; gap: 5px; margin-top: 10px;">
                             <button id="rm-ell-btn-clean" class="menu_button">Clean Now</button>
                             <button id="rm-ell-btn-check" class="menu_button">Check</button>
@@ -274,7 +270,6 @@
             if (this._eventsBound) return;
             this._eventsBound = true;
 
-            // Global Click Delegation
             $(document).on('click', '#remove-ellipsis-settings .rm-settings-header', function(e) {
                 e.preventDefault();
                 const content = $(this).next('.rm-settings-content');
@@ -288,7 +283,6 @@
                 }
             });
 
-            // Settings
             const updateSetting = (key, val) => {
                 Core.getSettings()[key] = val;
                 Core.saveSettings();
@@ -304,7 +298,6 @@
                 UI.notify(`Code Protection: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
 
-            // Actions
             $(document).on('click', '#rm-ell-btn-clean', async (e) => {
                 e.preventDefault();
                 UI.closeDrawer();
