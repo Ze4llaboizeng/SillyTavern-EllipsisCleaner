@@ -1,4 +1,4 @@
-/* Remove Ellipsis — Aggressive Cleaning & Instant Update */
+/* Remove Ellipsis — Aggressive Cleaning & Instant Rerender */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -10,8 +10,7 @@
     const MODULE_NAME = 'removeEllipsisExt';
     const DEFAULTS = { 
         autoRemove: false, 
-        treatTwoDots: true, 
-        removeAllDots: false, // New: Aggressive Mode
+        removeAllDots: false, // New: Aggressive mode (removes single '.' too)
         preserveSpace: true,
         protectCode: true 
     };
@@ -41,101 +40,93 @@
     };
 
     // ========================================================================
-    // MODULE: Cleaner (Logic)
+    // MODULE: Cleaner
     // ========================================================================
     const Cleaner = {
         cleanText(text, settings) {
             if (typeof text !== 'string' || !text) return { text, removed: 0 };
 
-            // --- 1. Protection Phase (Save Code/HTML) ---
+            // --- 1. Protection Phase (Masking) ---
             const blocks = [];
             const inlines = [];
             const scripts = [];
             const styles = [];
             const pres = [];
             const codes = [];
-            const paragraphs = [];
-            const divs = [];
-            const spans = [];
-            const tags = [];
+            const tags = []; // Protects attributes inside <tag ...>
 
             let processed = text;
 
             if (settings.protectCode) {
-                // Markdown
+                // Protect Code Blocks (Markdown & HTML)
                 processed = processed.replace(/```[\s\S]*?```/g, m => `@@BLOCK${blocks.push(m) - 1}@@`);
                 processed = processed.replace(/`[^`]*`/g, m => `@@INLINE${inlines.push(m) - 1}@@`);
-
-                // HTML Blocks (Keep Content)
+                
+                // Protect content inside specific technical tags
+                // We DO NOT protect <p> or <div> content here, or normal text won't be cleaned.
                 processed = processed.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, m => `@@SCRIPT${scripts.push(m) - 1}@@`);
                 processed = processed.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, m => `@@STYLE${styles.push(m) - 1}@@`);
                 processed = processed.replace(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi, m => `@@PRE${pres.push(m) - 1}@@`);
                 processed = processed.replace(/<code\b[^>]*>[\s\S]*?<\/code>/gi, m => `@@CODE${codes.push(m) - 1}@@`);
-                
-                // HTML Text Blocks (Keep Text inside)
-                processed = processed.replace(/<p\b[^>]*>[\s\S]*?<\/p>/gi, m => `@@PARA${paragraphs.push(m) - 1}@@`);
-                processed = processed.replace(/<div\b[^>]*>[\s\S]*?<\/div>/gi, m => `@@DIV${divs.push(m) - 1}@@`);
-                processed = processed.replace(/<span\b[^>]*>[\s\S]*?<\/span>/gi, m => `@@SPAN${spans.push(m) - 1}@@`);
 
-                // Generic Tags (Keep Attributes)
+                // Protect HTML Tags definition (attributes), but NOT the content between them
+                // e.g. <img src="file.jpg"> is protected. 
                 processed = processed.replace(/<[^>]+>/g, m => `@@TAG${tags.push(m) - 1}@@`);
             }
 
             // --- 2. Definition Phase ---
-            let pattern;
-            
+            // If "Remove All Dots" is checked, we match ANY sequence of dots (1 or more)
+            // Otherwise, we default to 3 dots (or 2 if requested)
+            let patternSource;
             if (settings.removeAllDots) {
-                // AGGRESSIVE: Match ANY single dot
-                pattern = /\./g;
+                patternSource = "\\.+|…"; // Matches "." ".." "..." "...."
             } else {
-                // STANDARD: Match sequences
-                const base = settings.treatTwoDots
-                    ? /(?<!\d)\.{2,}(?!\d)|…/g
-                    : /(?<!\d)\.{3,}(?!\d)|…/g;
-                pattern = base;
+                // Normal mode
+                patternSource = "(?<!\\d)\\.{3,}(?!\\d)|…"; // Matches "..."
+                if (settings.treatTwoDots) {
+                    patternSource = "(?<!\\d)\\.{2,}(?!\\d)|…"; // Matches ".." or "..."
+                }
             }
+            const baseRegex = new RegExp(patternSource, 'g');
 
             // --- 3. Cleaning Phase ---
-            let removedCount = 0;
             
-            // Special handling only needed if we aren't nuking everything
-            if (!settings.removeAllDots) {
-                const specialAfter = new RegExp(`(?:${pattern.source})[ \t]*(?=[*"'])`, 'g');
-                const specialBefore = new RegExp(`(?<=[*"'])(?:${pattern.source})[ \t]*`, 'g');
-                
-                processed = processed
-                    .replace(specialBefore, m => { removedCount += m.length; return ''; })
-                    .replace(specialAfter, m => { removedCount += m.length; return ''; });
-            }
+            // Special handling for quotes to avoid adding weird spaces
+            // Remove dots right before/after quotes without spacing
+            const specialAfter = new RegExp(`(?:${patternSource})[ \t]*(?=[*"'])`, 'g');
+            const specialBefore = new RegExp(`(?<=[*"'])(?:${patternSource})[ \t]*`, 'g');
+            
+            let removedCount = 0;
+            processed = processed
+                .replace(specialBefore, m => { removedCount += m.length; return ''; })
+                .replace(specialAfter, m => { removedCount += m.length; return ''; });
 
-            const mainPattern = settings.preserveSpace && !settings.removeAllDots
-                ? pattern
-                : new RegExp(`(?:${settings.removeAllDots ? '\\.' : pattern.source})[ \t]*`, 'g');
+            // Main Removal
+            // If preserveSpace is ON, we look for dots and replace them with a space
+            // UNLESS there is already a space.
+            const mainPattern = settings.preserveSpace
+                ? baseRegex
+                : new RegExp(`(?:${patternSource})[ \t]*`, 'g');
 
             processed = processed.replace(mainPattern, (match, offset, fullStr) => {
                 removedCount += match.length;
-                if (!settings.preserveSpace) return '';
-
-                // If removing all dots, we usually don't want to add spaces for every single period 
-                // unless user specifically requested "Preserve Space".
-                // Logic: If "Remove All" is ON, adding space might break words (e.g. node.js -> node js).
-                // But we respect the setting.
                 
+                if (!settings.preserveSpace) return ''; // Just delete
+
+                // Smart Spacing Logic
                 const prev = fullStr[offset - 1];
                 const next = fullStr[offset + match.length];
+                // Check if space exists around the match
                 const hasSpaceBefore = prev === undefined ? true : /\s/.test(prev);
                 const hasSpaceAfter = next === undefined ? true : /\s/.test(next);
 
-                if (hasSpaceBefore || hasSpaceAfter) return '';
-                return ' ';
+                if (hasSpaceBefore || hasSpaceAfter) return ''; // Space already exists
+                return ' '; // Insert space
             });
 
-            // --- 4. Restoration Phase ---
+            // --- 4. Restoration Phase (Unmasking) ---
             if (settings.protectCode) {
                 processed = processed.replace(/@@TAG(\d+)@@/g, (_, i) => tags[i]);
-                processed = processed.replace(/@@SPAN(\d+)@@/g, (_, i) => spans[i]);
-                processed = processed.replace(/@@DIV(\d+)@@/g, (_, i) => divs[i]);
-                processed = processed.replace(/@@PARA(\d+)@@/g, (_, i) => paragraphs[i]);
                 processed = processed.replace(/@@CODE(\d+)@@/g, (_, i) => codes[i]);
                 processed = processed.replace(/@@PRE(\d+)@@/g, (_, i) => pres[i]);
                 processed = processed.replace(/@@STYLE(\d+)@@/g, (_, i) => styles[i]);
@@ -148,49 +139,25 @@
         },
 
         cleanMessage(msg) {
-            if (!msg) return { count: 0, changed: false };
+            if (!msg) return 0;
             const settings = Core.getSettings();
             let total = 0;
-            let hasChanges = false;
 
-            // Helper to clean a field
-            const processField = (val) => {
-                if (typeof val !== 'string') return { val, diff: 0 };
-                const res = this.cleanText(val, settings);
-                return { val: res.text, diff: res.removed };
-            };
-
-            // Main Text
-            if (typeof msg.mes === 'string') {
-                const r = processField(msg.mes);
-                if (r.diff > 0) {
-                    msg.mes = r.val;
-                    total += r.diff;
-                    hasChanges = true;
-                }
-            }
-
-            // Extras
             if (msg.extra) {
-                if (typeof msg.extra.display_text === 'string') {
-                    const r = processField(msg.extra.display_text);
-                    if (r.diff > 0) {
-                        msg.extra.display_text = r.val;
-                        total += r.diff;
-                        hasChanges = true;
+                ['display_text', 'original'].forEach(f => {
+                    if (typeof msg.extra[f] === 'string') {
+                        const r = this.cleanText(msg.extra[f], settings);
+                        msg.extra[f] = r.text;
+                        total += r.removed;
                     }
-                }
-                if (typeof msg.extra.original === 'string') {
-                    const r = processField(msg.extra.original);
-                    if (r.diff > 0) {
-                        msg.extra.original = r.val;
-                        total += r.diff;
-                        hasChanges = true;
-                    }
-                }
+                });
             }
-
-            return { count: total, changed: hasChanges };
+            if (typeof msg.mes === 'string') {
+                const r = this.cleanText(msg.mes, settings);
+                msg.mes = r.text;
+                total += r.removed;
+            }
+            return total;
         }
     };
 
@@ -207,50 +174,48 @@
             if (typeof $ !== 'undefined') $('.drawer-overlay').trigger('click');
         },
 
-        async refreshChat(force = false) {
+        async refreshChat(forceVisualUpdate = false) {
             const ctx = Core.getContext();
             if (!ctx) return;
 
             try {
-                // 1. Save Chat
+                // 1. Commit changes to internal database
                 if (typeof ctx.saveChat === 'function') await ctx.saveChat();
 
-                // 2. Trigger Reactivity (New Nonce)
+                // 2. Notify system of change
                 const nonce = Date.now();
-                if (Array.isArray(ctx.chat)) {
-                    // We must replace the array to force some frameworks to notice
-                    // But ST relies on the object reference usually.
-                    // We simply map the nonce.
-                    ctx.chat = ctx.chat.map(m => ({ ...m, _rmNonce: nonce }));
-                }
+                if (Array.isArray(ctx.chat)) ctx.chat = ctx.chat.map(m => ({ ...m, _rmNonce: nonce }));
+                ctx.eventSource?.emit?.(ctx.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' });
 
-                // 3. Emit Changed Event
-                ctx.eventSource?.emit?.(ctx.event_types?.CHAT_CHANGED, { reason: 'rm-clean' });
-                
-                // 4. Force Render
-                if (typeof ctx.renderChat === 'function') {
-                    await ctx.renderChat();
-                }
+                // 3. Trigger Standard Re-render
+                if (typeof ctx.renderChat === 'function') await ctx.renderChat();
 
-                // 5. Hard DOM Force (Fallback)
-                if (force && typeof document !== 'undefined') {
-                    setTimeout(() => {
-                        // If render didn't catch it, we manually scrub visible nodes
-                        const settings = Core.getSettings();
-                        const selector = '.mes_text, .message-text, .chat-message .mes';
-                        document.querySelectorAll(selector).forEach(node => {
-                            const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
-                            let tn;
-                            while (tn = walker.nextNode()) {
-                                if (tn.parentNode.closest('code, pre, script, style, p, div, span')) continue;
-                                const original = tn.nodeValue;
-                                const res = Cleaner.cleanText(original, settings);
-                                if (res.removed > 0) tn.nodeValue = res.text;
+                // 4. FORCE DOM UPDATE (Fixes "Not showing immediately")
+                if (forceVisualUpdate && typeof document !== 'undefined') {
+                    const settings = Core.getSettings();
+                    // Broad selector to catch all message text areas
+                    const selector = '.mes_text, .message-text, .chat-message .mes';
+                    const nodes = document.querySelectorAll(selector);
+                    
+                    nodes.forEach(node => {
+                        // Use TreeWalker to find text nodes deeply nested (e.g. inside <p>)
+                        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
+                        let tn;
+                        while (tn = walker.nextNode()) {
+                            // Don't visually break code blocks that we protected earlier
+                            if (tn.parentNode.closest('code, pre, script, style')) continue;
+
+                            // Clean the text currently on screen
+                            const original = tn.nodeValue;
+                            const res = Cleaner.cleanText(original, settings);
+                            
+                            // Only update if changed
+                            if (res.removed > 0) {
+                                tn.nodeValue = res.text;
                             }
-                        });
-                    }, 50);
+                        }
+                    });
                 }
-
             } catch (e) { console.warn('Refresh error:', e); }
         }
     };
@@ -263,29 +228,15 @@
             const ctx = Core.getContext();
             if (!ctx?.chat) return;
             
-            let totalRemoved = 0;
-            let anyChange = false;
-
-            // IMPORTANT: Create a NEW array to force reactivity
-            const newChat = ctx.chat.map(msg => {
-                // Clone message to avoid reference staleness
-                const clone = structuredClone(msg);
-                const res = Cleaner.cleanMessage(clone);
-                if (res.changed) {
-                    totalRemoved += res.count;
-                    anyChange = true;
-                    return clone; // Return cleaned copy
-                }
-                return msg; // Return original if no change
-            });
-
-            if (anyChange) {
-                ctx.chat = newChat; // Swap the array
-                await UI.refreshChat(true); // Aggressive refresh
-                UI.notify(`Cleaned ${totalRemoved} dots.`, 'success');
-            } else {
-                UI.notify('No dots found to clean.', 'info');
-            }
+            let count = 0;
+            // 1. Clean the data
+            ctx.chat.forEach(msg => count += Cleaner.cleanMessage(msg));
+            
+            // 2. Update the screen immediately
+            await UI.refreshChat(true); 
+            
+            if (count > 0) UI.notify(`Removed ${count} dots.`, 'success');
+            else UI.notify('No dots found.', 'info');
         },
 
         async checkAll() {
@@ -296,7 +247,7 @@
             ctx.chat.forEach(msg => {
                 if (typeof msg.mes === 'string') count += Cleaner.cleanText(msg.mes, st).removed;
             });
-            UI.notify(count > 0 ? `Found ${count} dots.` : 'Clean.', 'info');
+            UI.notify(count > 0 ? `Found ${count} dots.` : 'No dots found.', 'info');
         },
 
         injectSettings() {
@@ -313,29 +264,31 @@
                     </div>
                     <div class="rm-settings-content" style="display:none;">
                         
-                        <label class="checkbox_label" style="background: rgba(255,0,0,0.1); padding:5px; border-radius:4px;" title="WARNING: Removes EVERY SINGLE DOT in text">
-                            <input type="checkbox" id="rm-ell-all" />
-                            <span style="margin-left:8px; font-weight:bold; color: #ff8888;">REMOVE ALL DOTS (.)</span>
-                        </label>
-
-                        <div style="height:1px; background:#444; margin:5px 0;"></div>
-
-                        <label class="checkbox_label">
+                        <label class="checkbox_label" title="Clean automatically when sending/receiving">
                             <input type="checkbox" id="rm-ell-auto" />
                             <span>Auto Remove</span>
                         </label>
-                        <label class="checkbox_label">
+
+                        <label class="checkbox_label" title="DANGER: Removes every single dot '.' in the text">
+                            <input type="checkbox" id="rm-ell-all" />
+                            <span style="color: #ffaaaa;">Remove ALL Dots (.)</span>
+                        </label>
+                        
+                        <label class="checkbox_label" title="Also remove '..' (2 dots) - Ignored if Remove All is ON">
                             <input type="checkbox" id="rm-ell-twodots" />
                             <span>Remove ".."</span>
                         </label>
-                        <label class="checkbox_label" title="Protects HTML blocks like <p>, <div>, <span>, <code>">
+                        
+                        <label class="checkbox_label" title="Protects Code Blocks, Scripts, Styles">
                             <input type="checkbox" id="rm-ell-protect" />
                             <span>Protect Code & HTML</span>
                         </label>
-                        <label class="checkbox_label">
+
+                        <label class="checkbox_label" title="Leave a space where dots were removed">
                             <input type="checkbox" id="rm-ell-space" />
                             <span>Preserve Space</span>
                         </label>
+
                         <div style="display: flex; gap: 5px; margin-top: 10px;">
                             <button id="rm-ell-btn-clean" class="menu_button">Clean Now</button>
                             <button id="rm-ell-btn-check" class="menu_button">Check</button>
@@ -347,8 +300,8 @@
             container.append(html);
             const st = Core.getSettings();
 
-            $('#rm-ell-all').prop('checked', st.removeAllDots);
             $('#rm-ell-auto').prop('checked', st.autoRemove);
+            $('#rm-ell-all').prop('checked', st.removeAllDots); // Bind new setting
             $('#rm-ell-twodots').prop('checked', st.treatTwoDots);
             $('#rm-ell-space').prop('checked', st.preserveSpace);
             $('#rm-ell-protect').prop('checked', st.protectCode !== false);
@@ -358,6 +311,7 @@
             if (this._eventsBound) return;
             this._eventsBound = true;
 
+            // Toggle Drawer
             $(document).on('click', '#remove-ellipsis-settings .rm-settings-header', function(e) {
                 e.preventDefault();
                 const content = $(this).next('.rm-settings-content');
@@ -375,24 +329,24 @@
                 Core.getSettings()[key] = val;
                 Core.saveSettings();
             };
-            
-            // NEW: Remove All Dots Setting
-            $(document).on('change', '#rm-ell-all', (e) => {
-                updateSetting('removeAllDots', e.target.checked);
-                if (e.target.checked) UI.notify('WARNING: This will remove every period in the text!', 'warning');
-            });
 
+            // Bind Inputs
             $(document).on('change', '#rm-ell-auto', (e) => {
                 updateSetting('autoRemove', e.target.checked);
                 UI.notify(`Auto Remove: ${e.target.checked ? 'ON' : 'OFF'}`);
+            });
+            $(document).on('change', '#rm-ell-all', (e) => {
+                updateSetting('removeAllDots', e.target.checked);
+                if(e.target.checked) UI.notify("Warning: Will remove ALL periods!", 'warning');
             });
             $(document).on('change', '#rm-ell-twodots', (e) => updateSetting('treatTwoDots', e.target.checked));
             $(document).on('change', '#rm-ell-space', (e) => updateSetting('preserveSpace', e.target.checked));
             $(document).on('change', '#rm-ell-protect', (e) => {
                 updateSetting('protectCode', e.target.checked);
-                UI.notify(`HTML Protection: ${e.target.checked ? 'ON' : 'OFF'}`);
+                UI.notify(`Code Protection: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
 
+            // Buttons
             $(document).on('click', '#rm-ell-btn-clean', async (e) => {
                 e.preventDefault();
                 UI.closeDrawer();
@@ -408,15 +362,19 @@
         init() {
             const ctx = Core.getContext();
             this.bindEvents(); 
+            
             if (ctx?.eventSource) {
                 ctx.eventSource.on(ctx.event_types.MESSAGE_RECEIVED, async () => {
                     if (Core.getSettings().autoRemove) await App.removeAll();
                 });
             }
+
+            // Hook Input Box
             const form = document.querySelector('form.send-form, #send_form');
             if (form) form.addEventListener('submit', () => {
                if (Core.getSettings().autoRemove) setTimeout(() => App.removeAll(), 50);
             }, true);
+
             this.injectSettings();
         }
     };
