@@ -1,4 +1,4 @@
-/* Remove Ellipsis — Instant Visual Update Fix */
+/* Remove Ellipsis — Visual & Data Sync Fix */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -40,47 +40,42 @@
     };
 
     // ========================================================================
-    // MODULE: Cleaner
+    // MODULE: Cleaner (Text Logic)
     // ========================================================================
     const Cleaner = {
         cleanText(text, settings) {
             if (typeof text !== 'string' || !text) return { text, removed: 0 };
 
-            // Protection Storage
-            const blocks = [];
-            const inlines = [];
-            const scripts = [];
-            const styles = [];
-            const pres = [];
-            const codes = [];
-            const paras = [];
-            const divs = [];
-            const spans = [];
-            const tags = [];
-
+            // Storage for masked content
+            const protectedItems = [];
             let processed = text;
 
             if (settings.protectCode) {
-                // 1. Protect Markdown
-                processed = processed.replace(/```[\s\S]*?```/g, m => `@@BLOCK${blocks.push(m) - 1}@@`);
-                processed = processed.replace(/`[^`]*`/g, m => `@@INLINE${inlines.push(m) - 1}@@`);
-                
-                // 2. Protect Technical HTML (Script, Style, Pre, Code)
-                processed = processed.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, m => `@@SCRIPT${scripts.push(m) - 1}@@`);
-                processed = processed.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, m => `@@STYLE${styles.push(m) - 1}@@`);
-                processed = processed.replace(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi, m => `@@PRE${pres.push(m) - 1}@@`);
-                processed = processed.replace(/<code\b[^>]*>[\s\S]*?<\/code>/gi, m => `@@CODE${codes.push(m) - 1}@@`);
+                // Helper to mask content
+                const mask = (regex, type) => {
+                    processed = processed.replace(regex, m => `@@${type}${protectedItems.push(m) - 1}@@`);
+                };
 
-                // 3. Protect HTML Content Blocks (<p>, <div>, <span>) - IF EXPLICITLY TYPED
-                processed = processed.replace(/<p\b[^>]*>[\s\S]*?<\/p>/gi, m => `@@PARA${paras.push(m) - 1}@@`);
-                processed = processed.replace(/<div\b[^>]*>[\s\S]*?<\/div>/gi, m => `@@DIV${divs.push(m) - 1}@@`);
-                processed = processed.replace(/<span\b[^>]*>[\s\S]*?<\/span>/gi, m => `@@SPAN${spans.push(m) - 1}@@`);
+                // 1. Markdown Blocks
+                mask(/```[\s\S]*?```/g, 'BLOCK');
+                mask(/`[^`]*`/g, 'INLINE');
 
-                // 4. Protect Attributes
-                processed = processed.replace(/<[^>]+>/g, m => `@@TAG${tags.push(m) - 1}@@`);
+                // 2. Technical HTML Blocks (Always protect these)
+                mask(/<script\b[^>]*>[\s\S]*?<\/script>/gi, 'SCRIPT');
+                mask(/<style\b[^>]*>[\s\S]*?<\/style>/gi, 'STYLE');
+                mask(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi, 'PRE');
+                mask(/<code\b[^>]*>[\s\S]*?<\/code>/gi, 'CODE');
+
+                // 3. Structural HTML Blocks (Protect content inside these too)
+                mask(/<p\b[^>]*>[\s\S]*?<\/p>/gi, 'PARA');
+                mask(/<div\b[^>]*>[\s\S]*?<\/div>/gi, 'DIV');
+                mask(/<span\b[^>]*>[\s\S]*?<\/span>/gi, 'SPAN');
+
+                // 4. Generic Tag Attributes (e.g. <img src="...">)
+                mask(/<[^>]+>/g, 'TAG');
             }
 
-            // Pattern Selection
+            // --- Pattern Definition ---
             let patternSource;
             if (settings.removeAllDots) {
                 patternSource = "\\.+|…"; // Any dot
@@ -89,6 +84,7 @@
             }
             const baseRegex = new RegExp(patternSource, 'g');
 
+            // --- Cleaning ---
             // Quote Protection
             const specialAfter = new RegExp(`(?:${patternSource})[ \t]*(?=[*"'])`, 'g');
             const specialBefore = new RegExp(`(?<=[*"'])(?:${patternSource})[ \t]*`, 'g');
@@ -99,13 +95,12 @@
                 .replace(specialAfter, m => { removedCount += m.length; return ''; });
 
             // Main Replacement
-            const mainPattern = settings.preserveSpace
-                ? baseRegex
-                : new RegExp(`(?:${patternSource})[ \t]*`, 'g');
+            const mainPattern = settings.preserveSpace ? baseRegex : new RegExp(`(?:${patternSource})[ \t]*`, 'g');
 
             processed = processed.replace(mainPattern, (match, offset, fullStr) => {
                 removedCount += match.length;
                 if (!settings.preserveSpace) return '';
+                // Smart Space Check
                 const prev = fullStr[offset - 1];
                 const next = fullStr[offset + match.length];
                 const hasSpaceBefore = prev === undefined ? true : /\s/.test(prev);
@@ -114,18 +109,19 @@
                 return ' '; 
             });
 
-            // Restoration
+            // --- Restoration ---
             if (settings.protectCode) {
-                processed = processed.replace(/@@TAG(\d+)@@/g, (_, i) => tags[i]);
-                processed = processed.replace(/@@SPAN(\d+)@@/g, (_, i) => spans[i]);
-                processed = processed.replace(/@@DIV(\d+)@@/g, (_, i) => divs[i]);
-                processed = processed.replace(/@@PARA(\d+)@@/g, (_, i) => paras[i]);
-                processed = processed.replace(/@@CODE(\d+)@@/g, (_, i) => codes[i]);
-                processed = processed.replace(/@@PRE(\d+)@@/g, (_, i) => pres[i]);
-                processed = processed.replace(/@@STYLE(\d+)@@/g, (_, i) => styles[i]);
-                processed = processed.replace(/@@SCRIPT(\d+)@@/g, (_, i) => scripts[i]);
-                processed = processed.replace(/@@INLINE(\d+)@@/g, (_, i) => inlines[i]);
-                processed = processed.replace(/@@BLOCK(\d+)@@/g, (_, i) => blocks[i]);
+                // Restore in reverse order or simply by key
+                processed = processed.replace(/@@TAG(\d+)@@/g, (_, i) => protectedItems[i]);
+                processed = processed.replace(/@@SPAN(\d+)@@/g, (_, i) => protectedItems[i]);
+                processed = processed.replace(/@@DIV(\d+)@@/g, (_, i) => protectedItems[i]);
+                processed = processed.replace(/@@PARA(\d+)@@/g, (_, i) => protectedItems[i]);
+                processed = processed.replace(/@@CODE(\d+)@@/g, (_, i) => protectedItems[i]);
+                processed = processed.replace(/@@PRE(\d+)@@/g, (_, i) => protectedItems[i]);
+                processed = processed.replace(/@@STYLE(\d+)@@/g, (_, i) => protectedItems[i]);
+                processed = processed.replace(/@@SCRIPT(\d+)@@/g, (_, i) => protectedItems[i]);
+                processed = processed.replace(/@@INLINE(\d+)@@/g, (_, i) => protectedItems[i]);
+                processed = processed.replace(/@@BLOCK(\d+)@@/g, (_, i) => protectedItems[i]);
             }
 
             return { text: processed, removed: removedCount };
@@ -154,7 +150,7 @@
     };
 
     // ========================================================================
-    // MODULE: UI
+    // MODULE: UI (Visuals)
     // ========================================================================
     const UI = {
         notify(msg, type = 'info') {
@@ -171,21 +167,18 @@
             if (!ctx) return;
 
             try {
-                // 1. Save Data
+                // 1. Commit Data
                 if (typeof ctx.saveChat === 'function') await ctx.saveChat();
-
-                // 2. Notify System
                 const nonce = Date.now();
                 if (Array.isArray(ctx.chat)) ctx.chat = ctx.chat.map(m => ({ ...m, _rmNonce: nonce }));
                 ctx.eventSource?.emit?.(ctx.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' });
-
-                // 3. Trigger Render
+                
+                // 2. Standard Render
                 if (typeof ctx.renderChat === 'function') await ctx.renderChat();
 
-                // 4. Force Visual Update (FIXED)
+                // 3. FORCE VISUAL UPDATE (With Protection Sync)
                 if (forceVisualUpdate && typeof document !== 'undefined') {
                     const settings = Core.getSettings();
-                    // Select all message text areas
                     const selector = '.mes_text, .message-text, .chat-message .mes';
                     const nodes = document.querySelectorAll(selector);
                     
@@ -193,14 +186,34 @@
                         const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
                         let tn;
                         while (tn = walker.nextNode()) {
-                            // !!! KEY FIX: Do NOT skip 'p', 'div', or 'span' here, or nothing updates.
-                            // Only skip technical code blocks.
-                            if (tn.parentNode.closest('code, pre, script, style')) continue;
+                            const parent = tn.parentNode;
+                            const tagName = parent.nodeName;
 
+                            // VISUAL PROTECTION LOGIC:
+                            // If code protection is ON, we must NOT clean text inside specific tags.
+                            if (settings.protectCode) {
+                                // Always protect technical tags
+                                if (['CODE', 'PRE', 'SCRIPT', 'STYLE'].includes(tagName)) continue;
+                                
+                                // Protect HTML Structure tags (P, DIV, SPAN) ONLY if they are nested 
+                                // (i.e., not the main SillyTavern message container)
+                                if (['P', 'DIV', 'SPAN'].includes(tagName)) {
+                                    // Check if this tag is the main message container.
+                                    // If it HAS the class 'mes_text' (or similar), it's the root, so CLEAN IT.
+                                    // If it does NOT have that class, it's a nested user tag, so PROTECT IT.
+                                    const isRootContainer = parent.classList.contains('mes_text') || 
+                                                          parent.classList.contains('message-text') || 
+                                                          parent.classList.contains('mes');
+                                    
+                                    if (!isRootContainer) continue; // Skip/Protect this nested tag
+                                }
+                            }
+
+                            // If allowed, clean the text node
                             const original = tn.nodeValue;
-                            // Clean the visual text (cleanText handles internal HTML protection)
+                            // Note: cleanText is called on raw text here, so its internal regex protection 
+                            // won't trigger (no tags in raw text), which is why the parent check above is crucial.
                             const res = Cleaner.cleanText(original, settings);
-                            
                             if (res.removed > 0) {
                                 tn.nodeValue = res.text;
                             }
@@ -221,12 +234,10 @@
             
             let count = 0;
             ctx.chat.forEach(msg => count += Cleaner.cleanMessage(msg));
-            
-            // Pass 'true' to force visual update
             await UI.refreshChat(true); 
             
             if (count > 0) UI.notify(`Removed ${count} dots.`, 'success');
-            else UI.notify('No dots found.', 'info');
+            else UI.notify('No dots found (or protected).', 'info');
         },
 
         async checkAll() {
@@ -259,7 +270,7 @@
                             <span>Auto Remove</span>
                         </label>
 
-                        <label class="checkbox_label">
+                        <label class="checkbox_label" title="DANGER: Removes every single dot '.'">
                             <input type="checkbox" id="rm-ell-all" />
                             <span style="color: #ffaaaa;">Remove ALL Dots (.)</span>
                         </label>
