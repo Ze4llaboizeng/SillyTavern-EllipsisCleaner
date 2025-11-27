@@ -1,504 +1,412 @@
-/* Remove Ellipsis — Single-file index.js */
+/* Remove Ellipsis — Refactored & Native UI */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
     window.__REMOVE_ELLIPSIS_EXT_LOADED__ = true;
 
-    // ---------- Core & Namespace ----------
-    const MODULE = 'removeEllipsisExt';
-    const DEFAULTS = { autoRemove: false, treatTwoDots: true, highlight: 'overlay', preserveSpace: true };
+    // ========================================================================
+    // MODULE: Constants & Defaults
+    // ========================================================================
+    const MODULE_NAME = 'removeEllipsisExt';
+    const DEFAULTS = { 
+        autoRemove: false, 
+        treatTwoDots: true, 
+        highlight: 'overlay', 
+        preserveSpace: true 
+    };
 
-    function getCtx() {
-        try { return window.SillyTavern?.getContext?.() || null; } catch (_) { return null; }
-    }
-    function ensureSettings() {
-        const ctx = getCtx();
-        if (!ctx) return structuredClone(DEFAULTS);
-        const store = ctx.extensionSettings || (ctx.extensionSettings = {});
-        if (!store[MODULE]) store[MODULE] = {};
-        for (const k of Object.keys(DEFAULTS)) if (!(k in store[MODULE])) store[MODULE][k] = DEFAULTS[k];
-        return store[MODULE];
-    }
-    function saveSettings() {
-        const ctx = getCtx();
-        (ctx?.saveSettingsDebounced || ctx?.saveSettings || (()=>{})).call(ctx);
-    }
+    // ========================================================================
+    // MODULE: Core (Settings & Context)
+    // ========================================================================
+    const Core = {
+        getContext() {
+            try { return window.SillyTavern?.getContext?.() || null; } catch (_) { return null; }
+        },
 
-    window.RemoveEllipsis = Object.assign(window.RemoveEllipsis || {}, {
-        core: { MODULE, DEFAULTS, getCtx, ensureSettings, saveSettings }
-    });
-
-    // ---------- Cleaner ----------
-    function cleanOutsideCode(text, treatTwoDots, preserveSpace = true) {
-        if (typeof text !== 'string' || !text) return { text, removed: 0 };
-
-        const blockRegex = /```[\s\S]*?```/g;
-        const blocks = [];
-        const sk1 = text.replace(blockRegex, m => `@@BLOCK${blocks.push(m) - 1}@@`);
-
-        const inlineRegex = /`[^`]*`/g;
-        const inlines = [];
-        const sk2 = sk1.replace(inlineRegex, m => `@@INLINE${inlines.push(m) - 1}@@`);
-
-        const basePattern = treatTwoDots
-            ? /(?<!\d)\.{2,}(?!\d)|…/g
-            : /(?<!\d)\.{3,}(?!\d)|…/g;
-
-        const specialAfter = new RegExp(`(?:${basePattern.source})[ \t]*(?=[*"'])`, 'g');
-        const specialBefore = new RegExp(`(?<=[*"'])(?:${basePattern.source})[ \t]*`, 'g');
-        let removed = 0;
-        let temp = sk2
-            .replace(specialBefore, m => { removed += m.length; return ''; })
-            .replace(specialAfter, m => { removed += m.length; return ''; });
-
-        const pattern = preserveSpace
-            ? basePattern
-            : new RegExp(`(?:${basePattern.source})[ \t]*`, 'g');
-
-        temp = temp.replace(pattern, (m, offset, str) => {
-            removed += m.length;
-            if (!preserveSpace) return '';
-            const prev = str[offset - 1];
-            const next = str[offset + m.length];
-            const hasSpaceBefore = prev === undefined ? true : /\s/.test(prev);
-            const hasSpaceAfter = next === undefined ? true : /\s/.test(next);
-            if (hasSpaceBefore || hasSpaceAfter) return '';
-            return ' ';
-        });
-
-        let restored = temp.replace(/@@INLINE(\d+)@@/g, (_, i) => inlines[i]);
-        restored = restored.replace(/@@BLOCK(\d+)@@/g, (_, i) => blocks[i]);
-        return { text: restored, removed };
-    }
-
-    function cleanMessageObject(msg) {
-        if (!msg) return 0;
-        const st = ensureSettings();
-        let total = 0;
-        if (typeof msg.mes === 'string') {
-            const r = cleanOutsideCode(msg.mes, st.treatTwoDots, st.preserveSpace); msg.mes = r.text; total += r.removed;
-        }
-        if (msg.extra) {
-            if (typeof msg.extra.display_text === 'string') {
-                const r = cleanOutsideCode(msg.extra.display_text, st.treatTwoDots, st.preserveSpace); msg.extra.display_text = r.text; total += r.removed;
-            }
-            if (typeof msg.extra.original === 'string') {
-                const r = cleanOutsideCode(msg.extra.original, st.treatTwoDots, st.preserveSpace); msg.extra.original = r.text; total += r.removed;
-            }
-        }
-        return total;
-    }
-
-    window.RemoveEllipsis.cleaner = { cleanOutsideCode, cleanMessageObject };
-
-    // ---------- Refresh ----------
-    function hardRefreshOnce() {
-        const ctx = getCtx();
-        if (!ctx) return;
-        try {
-            const nonce = Date.now();
-            if (Array.isArray(ctx.chat)) {
-                ctx.chat = ctx.chat.map(m => {
-                    const clone = { ...m, _rmNonce: nonce };
-                    if (clone.extra && typeof clone.extra === 'object') clone.extra = { ...clone.extra };
-                    return clone;
-                });
-            }
-        } catch (e) { console.warn('rebind chat failed', e); }
-
-        try { ctx?.eventSource?.emit?.(ctx?.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' }); } catch(_) {}
-        try { ctx?.eventSource?.emit?.(ctx?.event_types?.MESSAGE_LIST_UPDATED, {}); } catch(_) {}
-        try { if (typeof ctx?.renderChat === 'function') ctx.renderChat(); } catch(_) {}
-        try { ctx?.saveChat?.(); } catch(_) {}
-
-        try { window.dispatchEvent(new Event('resize')); } catch(_) {}
-        const sc = typeof document !== 'undefined' ? document.querySelector('#chat, .chat, .dialogues') : null;
-        if (sc) { const y = sc.scrollTop; sc.scrollTop = y + 1; sc.scrollTop = y; }
-
-        try {
-            const st = ensureSettings();
-            const { cleanOutsideCode } = window.RemoveEllipsis.cleaner || {};
-            if (cleanOutsideCode && typeof document !== 'undefined') {
-                document
-                    .querySelectorAll('.mes_text, .message-text, .chat-message, .mes_markdown, .markdown')
-                    .forEach(node => {
-                        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
-                        let tn;
-                        while ((tn = walker.nextNode())) {
-                            let p = tn.parentNode;
-                            let skip = false;
-                            while (p && p !== node) {
-                                if (p.nodeName === 'CODE' || p.nodeName === 'PRE') { skip = true; break; }
-                                p = p.parentNode;
-                            }
-                            if (skip) continue;
-                            const r = cleanOutsideCode(tn.nodeValue, st.treatTwoDots, st.preserveSpace);
-                            if (r.removed) tn.nodeValue = r.text;
-                        }
-                    });
-            }
-        } catch(_) {}
-    }
-
-    function refreshChatUI() { hardRefreshOnce(); }
-
-    function refreshChatUIAndWait(after) {
-        return new Promise(resolve => {
-            hardRefreshOnce();
-            if (typeof requestAnimationFrame === 'function') {
-                requestAnimationFrame(() => {
-                    hardRefreshOnce();
-                    requestAnimationFrame(() => {
-                        setTimeout(() => {
-                            hardRefreshOnce();
-                            try { typeof after === 'function' && after(); } catch(_) {}
-                            resolve();
-                        }, 0);
-                    });
-                });
-            } else {
-                hardRefreshOnce();
-                setTimeout(() => { try { typeof after === 'function' && after(); } catch(_) {}; resolve(); }, 0);
-            }
-        });
-    }
-
-    window.RemoveEllipsis.refresh = { refreshChatUI, refreshChatUIAndWait };
-
-    // ---------- UI & Toast ----------
-    function ensureFeedbackUI() {
-        if (typeof document === 'undefined') return;
-        if (document.getElementById('rm-ellipsis-toast')) return;
-        const style = document.createElement('style');
-        style.textContent = `
-            #rm-ellipsis-toast {
-                position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%);
-                padding: 8px 12px; background: rgba(0,0,0,.85); color: #fff; border-radius: 10px;
-                font-size: 12px; z-index: 99999; opacity: 0; transition: opacity .18s ease;
-                pointer-events: none;
-            }
-            .rm-ellipsis-overlay {
-                position: absolute; border-radius: 6px; inset: 0;
-                box-shadow: 0 0 0 2px rgba(255,200,0,.75);
-                animation: rmEllPulse 900ms ease 1;
-                pointer-events: none;
-            }
-            @keyframes rmEllPulse {
-                0% { box-shadow: 0 0 0 3px rgba(255,200,0,.85); }
-                100% { box-shadow: 0 0 0 0 rgba(255,200,0,0); }
-            }
-        `;
-        document.head.appendChild(style);
-        const toast = document.createElement('div');
-        toast.id = 'rm-ellipsis-toast';
-        document.body.appendChild(toast);
-    }
-
-    function toast(msg) {
-        ensureFeedbackUI();
-        if (typeof document === 'undefined') return;
-        const el = document.getElementById('rm-ellipsis-toast');
-        el.textContent = msg;
-        el.style.opacity = '1';
-        clearTimeout(el._t);
-        el._t = setTimeout(()=>{ el.style.opacity = '0'; }, 1200);
-    }
-
-    function overlayHighlight(node) {
-        const st = ensureSettings();
-        if (st.highlight === 'none' || !node || node.nodeType !== 1) return;
-        const anchor = node;
-        const prevPos = getComputedStyle(anchor).position;
-        if (prevPos === 'static') anchor.style.position = 'relative';
-        const ov = document.createElement('div');
-        ov.className = 'rm-ellipsis-overlay';
-        anchor.appendChild(ov);
-        setTimeout(() => {
-            ov.remove();
-            if (prevPos === 'static') anchor.style.position = '';
-        }, 900);
-    }
-
-    function getInputEl() {
-        if (typeof document === 'undefined') return null;
-        return (
-            document.querySelector('textarea, .chat-input textarea') ||
-            document.querySelector('[contenteditable="true"].chat-input, .st-user-input [contenteditable="true"]') ||
-            null
-        );
-    }
-
-    function sanitizeCurrentInput() {
-        const el = getInputEl();
-        if (!el) return 0;
-        const st = ensureSettings();
-        const val = ('value' in el) ? el.value : el.textContent;
-        const r = cleanOutsideCode(val, st.treatTwoDots, st.preserveSpace);
-        if (r.removed > 0) {
-            if ('value' in el) el.value = r.text; else el.textContent = r.text;
-            const ev = { bubbles: true, cancelable: false };
-            el.dispatchEvent(new Event('input', ev));
-            el.dispatchEvent(new Event('change', ev));
-            el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'Unidentified' }));
-        }
-        return r.removed;
-    }
-
-    function hookOutgoingInput(autoChatCleanup = false) {
-        if (hookOutgoingInput._done || typeof document === 'undefined') return; hookOutgoingInput._done = true;
-
-        const form = document.querySelector('form.send-form, #send_form, form');
-        if (form) form.addEventListener('submit', async () => {
-            const n = sanitizeCurrentInput();
-            if (autoChatCleanup && ensureSettings().autoRemove) {
-                setTimeout(removeEllipsesFromChat, 0);
-            } else {
-                await refreshChatUIAndWait();
-                if (n) toast(`ลบ … ${n}`);
-            }
-        }, true);
-
-        const btn = document.querySelector('.send-button, button[type="submit"], #send_but, .st-send');
-        if (btn) btn.addEventListener('mousedown', async () => {
-            const n = sanitizeCurrentInput();
-            if (autoChatCleanup && ensureSettings().autoRemove) {
-                setTimeout(removeEllipsesFromChat, 0);
-            } else {
-                await refreshChatUIAndWait();
-                if (n) toast(`ลบ … ${n}`);
-            }
-        }, true);
-
-        const input = getInputEl();
-        if (input) input.addEventListener('keydown', async (e) => {
-            const isEnter = e.key==='Enter' && !e.shiftKey && !e.ctrlKey && !e.altKey && !e.metaKey && !e.isComposing;
-            if (isEnter) {
-                const n = sanitizeCurrentInput();
-                if (autoChatCleanup && ensureSettings().autoRemove) {
-                    setTimeout(removeEllipsesFromChat, 0);
-                } else {
-                    await refreshChatUIAndWait();
-                    if (n) toast(`ลบ … ${n}`);
+        getSettings() {
+            const ctx = this.getContext();
+            if (!ctx) return structuredClone(DEFAULTS);
+            
+            const store = ctx.extensionSettings || (ctx.extensionSettings = {});
+            if (!store[MODULE_NAME]) store[MODULE_NAME] = {};
+            
+            // Ensure all defaults exist
+            for (const key of Object.keys(DEFAULTS)) {
+                if (!(key in store[MODULE_NAME])) {
+                    store[MODULE_NAME][key] = DEFAULTS[key];
                 }
             }
-        }, true);
+            return store[MODULE_NAME];
+        },
 
-        ['paste','drop'].forEach(evt=>{
-            (input||document).addEventListener(evt, () => setTimeout(sanitizeCurrentInput, 0), true);
-        });
-    }
+        saveSettings() {
+            const ctx = this.getContext();
+            if (ctx?.saveSettingsDebounced) ctx.saveSettingsDebounced();
+            else if (ctx?.saveSettings) ctx.saveSettings();
+        }
+    };
 
-    async function removeEllipsesFromChat() {
-        const ctx = getCtx();
-        let removedSum = 0;
-        if (ctx?.chat?.forEach) ctx.chat.forEach(msg => { removedSum += cleanMessageObject(msg); });
+    // ========================================================================
+    // MODULE: Cleaner (Text Processing)
+    // ========================================================================
+    const Cleaner = {
+        /**
+         * Removes ellipses from text, ignoring code blocks and inline code.
+         */
+        cleanText(text, settings) {
+            if (typeof text !== 'string' || !text) return { text, removed: 0 };
 
-        await refreshChatUIAndWait();
+            // 1. Protect Code Blocks
+            const blockRegex = /```[\s\S]*?```/g;
+            const blocks = [];
+            const protectedBlocks = text.replace(blockRegex, m => `@@BLOCK${blocks.push(m) - 1}@@`);
 
-        const last = document.querySelector(
-            '.mes:last-child .mes_text, .message:last-child .message-text, .chat-message:last-child, .mes_markdown:last-child, .markdown:last-child'
-        );
-        overlayHighlight(last);
-        toast(removedSum > 0 ? `ลบแล้ว ${removedSum} ตัว` : 'ไม่มี …');
-    }
+            // 2. Protect Inline Code
+            const inlineRegex = /`[^`]*`/g;
+            const inlines = [];
+            const protectedInlines = protectedBlocks.replace(inlineRegex, m => `@@INLINE${inlines.push(m) - 1}@@`);
 
-    async function countEllipsesInChat() {
-        const ctx = getCtx();
-        let count = 0;
-        const st = ensureSettings();
-        if (ctx?.chat?.forEach) ctx.chat.forEach(msg => {
-            if (typeof msg.mes === 'string') count += cleanOutsideCode(msg.mes, st.treatTwoDots, st.preserveSpace).removed;
-            if (msg.extra) {
-                if (typeof msg.extra.display_text === 'string') count += cleanOutsideCode(msg.extra.display_text, st.treatTwoDots, st.preserveSpace).removed;
-                if (typeof msg.extra.original === 'string') count += cleanOutsideCode(msg.extra.original, st.treatTwoDots, st.preserveSpace).removed;
-            }
-        });
+            // 3. Define Patterns
+            const basePattern = settings.treatTwoDots
+                ? /(?<!\d)\.{2,}(?!\d)|…/g
+                : /(?<!\d)\.{3,}(?!\d)|…/g;
 
-        // Ensure UI is fresh before reporting
-        await refreshChatUIAndWait();
-        
-        toast(count > 0 ? `พบ … ${count} ตัว` : 'ไม่พบ …');
-    }
-
-    // ---------- Extension Menu Injection ----------
-    function addSettingsUI() {
-        if (typeof $ === 'undefined' || typeof document === 'undefined') return;
-        
-        // Wait for extension settings container to be available
-        const settingsContainerId = '#extensions_settings';
-        
-        // Helper to inject when the container exists
-        const inject = () => {
-            const container = $(settingsContainerId);
-            if (container.length === 0) return false;
+            // 4. Remove around quotes (Special Handling)
+            // Remove space+ellipsis before quote end or ellipsis+space after quote start
+            const specialAfter = new RegExp(`(?:${basePattern.source})[ \t]*(?=[*"'])`, 'g');
+            const specialBefore = new RegExp(`(?<=[*"'])(?:${basePattern.source})[ \t]*`, 'g');
             
-            // Check if already injected
-            if ($('#remove-ellipsis-settings').length > 0) return true;
+            let removedCount = 0;
+            let processed = protectedInlines
+                .replace(specialBefore, m => { removedCount += m.length; return ''; })
+                .replace(specialAfter, m => { removedCount += m.length; return ''; });
 
-            // Define the Settings HTML
-            const settingsHtml = `
+            // 5. Main Removal
+            const mainPattern = settings.preserveSpace
+                ? basePattern
+                : new RegExp(`(?:${basePattern.source})[ \t]*`, 'g');
+
+            processed = processed.replace(mainPattern, (match, offset, fullStr) => {
+                removedCount += match.length;
+                if (!settings.preserveSpace) return '';
+
+                // Smart Spacing Logic
+                const prevChar = fullStr[offset - 1];
+                const nextChar = fullStr[offset + match.length];
+                const hasSpaceBefore = prevChar === undefined ? true : /\s/.test(prevChar);
+                const hasSpaceAfter = nextChar === undefined ? true : /\s/.test(nextChar);
+
+                if (hasSpaceBefore || hasSpaceAfter) return '';
+                return ' ';
+            });
+
+            // 6. Restore Code
+            let final = processed.replace(/@@INLINE(\d+)@@/g, (_, i) => inlines[i]);
+            final = final.replace(/@@BLOCK(\d+)@@/g, (_, i) => blocks[i]);
+
+            return { text: final, removed: removedCount };
+        },
+
+        /**
+         * Cleans a SillyTavern message object (mes, display_text, original).
+         */
+        cleanMessage(msg) {
+            if (!msg) return 0;
+            const settings = Core.getSettings();
+            let totalRemoved = 0;
+
+            const fields = ['mes'];
+            // Access nested fields safely
+            if (msg.extra) {
+                if (typeof msg.extra.display_text === 'string') {
+                    const res = this.cleanText(msg.extra.display_text, settings);
+                    msg.extra.display_text = res.text;
+                    totalRemoved += res.removed;
+                }
+                if (typeof msg.extra.original === 'string') {
+                    const res = this.cleanText(msg.extra.original, settings);
+                    msg.extra.original = res.text;
+                    totalRemoved += res.removed;
+                }
+            }
+
+            // Main message content
+            if (typeof msg.mes === 'string') {
+                const res = this.cleanText(msg.mes, settings);
+                msg.mes = res.text;
+                totalRemoved += res.removed;
+            }
+
+            return totalRemoved;
+        }
+    };
+
+    // ========================================================================
+    // MODULE: UI (Interaction & Notifications)
+    // ========================================================================
+    const UI = {
+        /**
+         * Uses SillyTavern's native toastr if available.
+         */
+        notify(msg, type = 'info') {
+            if (typeof toastr !== 'undefined' && toastr[type]) {
+                toastr[type](msg, 'Ellipsis Cleaner');
+            } else {
+                console.log(`[RemoveEllipsis] ${msg}`);
+            }
+        },
+
+        /**
+         * Standard way to close the ST Extensions drawer.
+         */
+        closeDrawer() {
+            if (typeof $ !== 'undefined') {
+                $('.drawer-overlay').trigger('click');
+            }
+        },
+
+        /**
+         * Triggers a UI refresh without reloading the page.
+         */
+        async refreshChat() {
+            const ctx = Core.getContext();
+            if (!ctx) return;
+
+            // Force internal updates
+            try {
+                const nonce = Date.now();
+                if (Array.isArray(ctx.chat)) {
+                    ctx.chat = ctx.chat.map(m => ({ ...m, _rmNonce: nonce }));
+                }
+                ctx.eventSource?.emit?.(ctx.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' });
+                
+                // The main render call
+                if (typeof ctx.renderChat === 'function') {
+                    await ctx.renderChat();
+                }
+            } catch (e) {
+                console.warn('[RemoveEllipsis] Refresh failed', e);
+            }
+        }
+    };
+
+    // ========================================================================
+    // MODULE: App (Main Logic & Event Wiring)
+    // ========================================================================
+    const App = {
+        async removeAll() {
+            const ctx = Core.getContext();
+            if (!ctx?.chat) return;
+
+            let count = 0;
+            ctx.chat.forEach(msg => {
+                count += Cleaner.cleanMessage(msg);
+            });
+
+            await UI.refreshChat();
+            
+            if (count > 0) UI.notify(`Removed ${count} ellipses.`, 'success');
+            else UI.notify('No ellipses found to clean.', 'info');
+        },
+
+        async checkAll() {
+            const ctx = Core.getContext();
+            if (!ctx?.chat) return;
+
+            let count = 0;
+            const st = Core.getSettings();
+
+            // Dry run
+            ctx.chat.forEach(msg => {
+                if (typeof msg.mes === 'string') count += Cleaner.cleanText(msg.mes, st).removed;
+                if (msg.extra?.display_text) count += Cleaner.cleanText(msg.extra.display_text, st).removed;
+            });
+
+            await UI.refreshChat(); // Re-render to ensure visual sync
+            UI.notify(count > 0 ? `Found ${count} ellipses.` : 'No ellipses found.', 'info');
+        },
+
+        handleInputEvents() {
+            if (typeof document === 'undefined') return;
+
+            const getInput = () => document.querySelector('textarea, .chat-input textarea, .st-user-input [contenteditable="true"]');
+
+            const sanitize = () => {
+                const el = getInput();
+                if (!el) return 0;
+                
+                const val = el.value || el.textContent;
+                const res = Cleaner.cleanText(val, Core.getSettings());
+                
+                if (res.removed > 0) {
+                    if ('value' in el) el.value = res.text;
+                    else el.textContent = res.text;
+                    
+                    el.dispatchEvent(new Event('input', { bubbles: true }));
+                }
+                return res.removed;
+            };
+
+            // Hook send buttons and form submit
+            const hook = () => {
+                const form = document.querySelector('form.send-form, #send_form');
+                const btn = document.querySelector('#send_but, .st-send');
+
+                const action = async () => {
+                    const n = sanitize();
+                    const st = Core.getSettings();
+                    
+                    if (st.autoRemove) {
+                        setTimeout(() => App.removeAll(), 10);
+                    } else if (n > 0) {
+                        UI.notify(`Cleaned ${n} from input`, 'info');
+                    }
+                };
+
+                if (form) form.addEventListener('submit', action, true);
+                if (btn) btn.addEventListener('mousedown', action, true);
+                
+                const input = getInput();
+                if (input) {
+                    input.addEventListener('keydown', (e) => {
+                        if (e.key === 'Enter' && !e.shiftKey) action();
+                    });
+                }
+            };
+            
+            hook();
+        },
+
+        injectSettings() {
+            if (typeof $ === 'undefined') return;
+            const container = $('#extensions_settings');
+            if (!container.length || $('#remove-ellipsis-settings').length) return;
+
+            const html = `
             <div id="remove-ellipsis-settings" class="extension_settings_block">
                 <div class="inline-drawer">
                     <div class="inline-drawer-toggle inline-drawer-header">
                         <b>Remove Ellipsis Cleaner</b>
                         <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                     </div>
-                    <div class="inline-drawer-content">
+                    <div class="inline-drawer-content" style="display:none;">
                         <div style="padding: 10px;">
                             <label class="checkbox_label" style="display: flex; align-items: center; margin-bottom: 5px;">
                                 <input type="checkbox" id="rm-ell-auto" />
-                                <span style="margin-left: 8px;">Auto Remove (ลบอัตโนมัติเมื่อข้อความเข้า/ส่ง)</span>
+                                <span style="margin-left: 8px;">Auto Remove (Always Active)</span>
                             </label>
                             
                             <label class="checkbox_label" style="display: flex; align-items: center; margin-bottom: 5px;">
                                 <input type="checkbox" id="rm-ell-twodots" />
-                                <span style="margin-left: 8px;">Remove ".." (ลบจุดสองจุดด้วย)</span>
+                                <span style="margin-left: 8px;">Remove ".." (Double dots)</span>
                             </label>
                             
                             <label class="checkbox_label" style="display: flex; align-items: center; margin-bottom: 10px;">
                                 <input type="checkbox" id="rm-ell-space" />
-                                <span style="margin-left: 8px;">Preserve Space (เว้นช่องว่างหลังลบ)</span>
+                                <span style="margin-left: 8px;">Preserve Space</span>
                             </label>
 
                             <div style="display: flex; gap: 10px; margin-top: 10px;">
                                 <button id="rm-ell-btn-clean" class="menu_button">
-                                    Clean Chat Now (ลบทันที)
+                                    Clean Chat Now
                                 </button>
                                 <button id="rm-ell-btn-check" class="menu_button">
-                                    Check (ตรวจสอบจำนวน)
+                                    Check Count
                                 </button>
                             </div>
                         </div>
                     </div>
                 </div>
-            </div>
-            `;
+            </div>`;
 
-            // Append to the extension settings list
-            container.append(settingsHtml);
+            container.append(html);
 
-            // Bind values and events
-            const st = ensureSettings();
+            const st = Core.getSettings();
             
-            $('#rm-ell-auto').prop('checked', st.autoRemove).on('change', (e) => {
-                ensureSettings().autoRemove = e.target.checked;
-                saveSettings();
-                toast(`Auto Remove: ${e.target.checked ? 'ON' : 'OFF'}`);
+            // Toggle Drawer
+            $('#remove-ellipsis-settings .inline-drawer-header').on('click', function() {
+                $(this).next('.inline-drawer-content').slideToggle(200);
+                $(this).find('.inline-drawer-icon').toggleClass('down');
             });
 
+            // Bind Settings
+            $('#rm-ell-auto').prop('checked', st.autoRemove).on('change', (e) => {
+                Core.getSettings().autoRemove = e.target.checked;
+                Core.saveSettings();
+                UI.notify(`Auto Remove: ${e.target.checked ? 'ON' : 'OFF'}`);
+            });
+            
             $('#rm-ell-twodots').prop('checked', st.treatTwoDots).on('change', (e) => {
-                ensureSettings().treatTwoDots = e.target.checked;
-                saveSettings();
+                Core.getSettings().treatTwoDots = e.target.checked;
+                Core.saveSettings();
             });
 
             $('#rm-ell-space').prop('checked', st.preserveSpace).on('change', (e) => {
-                ensureSettings().preserveSpace = e.target.checked;
-                saveSettings();
+                Core.getSettings().preserveSpace = e.target.checked;
+                Core.saveSettings();
             });
 
+            // Actions
             $('#rm-ell-btn-clean').on('click', async () => {
-                await removeEllipsesFromChat();
+                UI.closeDrawer();
+                await App.removeAll();
             });
 
             $('#rm-ell-btn-check').on('click', async () => {
-                await countEllipsesInChat();
+                UI.closeDrawer();
+                await App.checkAll();
             });
+        },
 
-            return true;
-        };
+        init() {
+            const ctx = Core.getContext();
+            if (!ctx) return; // Wait for ST
 
-        // Try to inject immediately, then observe/retry if needed
-        if (!inject()) {
-            const observer = new MutationObserver(() => {
-                if (inject()) observer.disconnect();
-            });
-            const target = document.querySelector('#content') || document.body;
-            observer.observe(target, { childList: true, subtree: true });
+            // Event Listeners
+            if (ctx.eventSource) {
+                // Incoming messages
+                ctx.eventSource.on(ctx.event_types.MESSAGE_RECEIVED, async () => {
+                    if (Core.getSettings().autoRemove) await App.removeAll();
+                });
+                
+                // Outgoing messages (pre-process)
+                ctx.eventSource.on(ctx.event_types.MESSAGE_SENT, async (data) => {
+                    // Logic to clean data before sending if needed, 
+                    // though hookOutgoingInput handles the UI input box.
+                });
+            }
+
+            // Initialize UI
+            this.injectSettings();
+            this.handleInputEvents();
+
+            // Run once if auto-remove is on
+            if (Core.getSettings().autoRemove) App.removeAll();
         }
-    }
-
-    window.RemoveEllipsis.ui = {
-        addUI: addSettingsUI, // Alias for compatibility
-        hookOutgoingInput,
-        toast,
-        overlayHighlight,
-        checkEllipsesInChat: countEllipsesInChat,
-        removeFromChat: removeEllipsesFromChat,
     };
 
-    // ---------- Wiring & Boot ----------
-    function wireWithEvents() {
-        const ctx = getCtx(); if (!ctx) return false;
-        const { eventSource, event_types } = ctx || {};
-        if (!eventSource || !event_types) return false;
-
-        const { cleanOutsideCode } = window.RemoveEllipsis.cleaner;
-        const { refreshChatUIAndWait } = window.RemoveEllipsis.refresh;
-        const { addUI, hookOutgoingInput, removeFromChat: removeEllipsesFromChat } = window.RemoveEllipsis.ui;
-
-        eventSource.on?.(event_types.MESSAGE_SENT, (p) => {
-            (async () => {
-                if (!p) return;
-                const st = ensureSettings();
-                let removed = 0;
-                if (typeof p.message === 'string') { const r = cleanOutsideCode(p.message, st.treatTwoDots, st.preserveSpace); p.message = r.text; removed += r.removed; }
-                if (typeof p.mes === 'string')     { const r = cleanOutsideCode(p.mes,     st.treatTwoDots, st.preserveSpace); p.mes     = r.text; removed += r.removed; }
-                if (st.autoRemove) {
-                    await removeEllipsesFromChat();
-                } else if (removed) {
-                    await refreshChatUIAndWait(() => window.RemoveEllipsis.ui.toast(`ลบ … ${removed}`));
-                }
-            })();
-        });
-
-        eventSource.on?.(event_types.MESSAGE_RECEIVED, () => {
-            (async () => {
-                if (!ensureSettings().autoRemove) return;
-                await removeEllipsesFromChat();
-            })();
-        });
-
-        const initUI = () => {
-            addSettingsUI();
-            hookOutgoingInput();
-            if (ensureSettings().autoRemove) removeEllipsesFromChat();
-        };
-        if (event_types.APP_READY) {
-            eventSource.on(event_types.APP_READY, initUI);
-        } else {
-            document.addEventListener('DOMContentLoaded', initUI, { once: true });
-            setTimeout(initUI, 800);
-        }
-        return true;
-    }
-
-    function wireWithFallback() {
-        const { addUI, hookOutgoingInput, removeFromChat: removeEllipsesFromChat } = window.RemoveEllipsis.ui;
+    // ========================================================================
+    // BOOTSTRAP
+    // ========================================================================
+    (function boot() {
         if (typeof document === 'undefined') return;
 
-        const initUI = () => {
-            addSettingsUI();
-            hookOutgoingInput();
-            if (ensureSettings().autoRemove) removeEllipsesFromChat();
+        const onReady = () => {
+            App.init();
+            // Observer for dynamic UI loading (re-inject settings if lost)
+            const obs = new MutationObserver(() => App.injectSettings());
+            const target = document.querySelector('#content') || document.body;
+            obs.observe(target, { childList: true, subtree: true });
         };
 
-        document.addEventListener('DOMContentLoaded', initUI);
-        setTimeout(initUI, 800);
-    }
+        if (window.SillyTavern?.getContext) {
+            onReady();
+        } else {
+            // Fallback wait
+            setTimeout(onReady, 2000); 
+        }
+    })();
 
-    function boot() {
-        try { /* all modules already bundled */ } catch (e) { console.error('[RemoveEllipsis] init failed', e); }
-        window.RemoveEllipsis.core.ensureSettings();
-
-        const ok = wireWithEvents();
-        if (!ok) wireWithFallback();
-    }
-
-    if (typeof document !== 'undefined') {
-        boot();
-    }
-
-    if (typeof module !== 'undefined' && module.exports) {
-        module.exports = window.RemoveEllipsis;
-    }
+    // Export for debugging/tests
+    window.RemoveEllipsis = { Core, Cleaner, UI, App };
 })();
