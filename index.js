@@ -1,4 +1,4 @@
-/* Remove Ellipsis — Visual & Data Sync Fix */
+/* Remove Ellipsis — Added Notification Toggle */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -12,7 +12,8 @@
         autoRemove: false, 
         removeAllDots: false, 
         preserveSpace: true,
-        protectCode: true 
+        protectCode: true,
+        notifications: true // New default
     };
 
     // ========================================================================
@@ -40,52 +41,47 @@
     };
 
     // ========================================================================
-    // MODULE: Cleaner (Text Logic)
+    // MODULE: Cleaner
     // ========================================================================
     const Cleaner = {
         cleanText(text, settings) {
             if (typeof text !== 'string' || !text) return { text, removed: 0 };
 
-            // Storage for masked content
             const protectedItems = [];
             let processed = text;
 
             if (settings.protectCode) {
-                // Helper to mask content
-                const mask = (regex, type) => {
-                    processed = processed.replace(regex, m => `@@${type}${protectedItems.push(m) - 1}@@`);
+                const mask = (regex) => {
+                    processed = processed.replace(regex, m => `@@PT${protectedItems.push(m) - 1}@@`);
                 };
 
-                // 1. Markdown Blocks
-                mask(/```[\s\S]*?```/g, 'BLOCK');
-                mask(/`[^`]*`/g, 'INLINE');
+                // 1. Markdown
+                mask(/```[\s\S]*?```/g);
+                mask(/`[^`]*`/g);
 
-                // 2. Technical HTML Blocks (Always protect these)
-                mask(/<script\b[^>]*>[\s\S]*?<\/script>/gi, 'SCRIPT');
-                mask(/<style\b[^>]*>[\s\S]*?<\/style>/gi, 'STYLE');
-                mask(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi, 'PRE');
-                mask(/<code\b[^>]*>[\s\S]*?<\/code>/gi, 'CODE');
+                // 2. Technical Blocks
+                mask(/<script\b[^>]*>[\s\S]*?<\/script>/gi);
+                mask(/<style\b[^>]*>[\s\S]*?<\/style>/gi);
+                mask(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi);
+                mask(/<code\b[^>]*>[\s\S]*?<\/code>/gi);
 
-                // 3. Structural HTML Blocks (Protect content inside these too)
-                mask(/<p\b[^>]*>[\s\S]*?<\/p>/gi, 'PARA');
-                mask(/<div\b[^>]*>[\s\S]*?<\/div>/gi, 'DIV');
-                mask(/<span\b[^>]*>[\s\S]*?<\/span>/gi, 'SPAN');
+                // 3. Structural Blocks
+                mask(/<p\b[^>]*>[\s\S]*?<\/p>/gi);
+                mask(/<div\b[^>]*>[\s\S]*?<\/div>/gi);
+                mask(/<span\b[^>]*>[\s\S]*?<\/span>/gi);
 
-                // 4. Generic Tag Attributes (e.g. <img src="...">)
-                mask(/<[^>]+>/g, 'TAG');
+                // 4. Attributes
+                mask(/<[^>]+>/g);
             }
 
-            // --- Pattern Definition ---
             let patternSource;
             if (settings.removeAllDots) {
-                patternSource = "\\.+|…"; // Any dot
+                patternSource = "\\.+|…";
             } else {
                 patternSource = settings.treatTwoDots ? "(?<!\\d)\\.{2,}(?!\\d)|…" : "(?<!\\d)\\.{3,}(?!\\d)|…";
             }
             const baseRegex = new RegExp(patternSource, 'g');
 
-            // --- Cleaning ---
-            // Quote Protection
             const specialAfter = new RegExp(`(?:${patternSource})[ \t]*(?=[*"'])`, 'g');
             const specialBefore = new RegExp(`(?<=[*"'])(?:${patternSource})[ \t]*`, 'g');
             
@@ -94,13 +90,11 @@
                 .replace(specialBefore, m => { removedCount += m.length; return ''; })
                 .replace(specialAfter, m => { removedCount += m.length; return ''; });
 
-            // Main Replacement
             const mainPattern = settings.preserveSpace ? baseRegex : new RegExp(`(?:${patternSource})[ \t]*`, 'g');
 
             processed = processed.replace(mainPattern, (match, offset, fullStr) => {
                 removedCount += match.length;
                 if (!settings.preserveSpace) return '';
-                // Smart Space Check
                 const prev = fullStr[offset - 1];
                 const next = fullStr[offset + match.length];
                 const hasSpaceBefore = prev === undefined ? true : /\s/.test(prev);
@@ -109,19 +103,8 @@
                 return ' '; 
             });
 
-            // --- Restoration ---
             if (settings.protectCode) {
-                // Restore in reverse order or simply by key
-                processed = processed.replace(/@@TAG(\d+)@@/g, (_, i) => protectedItems[i]);
-                processed = processed.replace(/@@SPAN(\d+)@@/g, (_, i) => protectedItems[i]);
-                processed = processed.replace(/@@DIV(\d+)@@/g, (_, i) => protectedItems[i]);
-                processed = processed.replace(/@@PARA(\d+)@@/g, (_, i) => protectedItems[i]);
-                processed = processed.replace(/@@CODE(\d+)@@/g, (_, i) => protectedItems[i]);
-                processed = processed.replace(/@@PRE(\d+)@@/g, (_, i) => protectedItems[i]);
-                processed = processed.replace(/@@STYLE(\d+)@@/g, (_, i) => protectedItems[i]);
-                processed = processed.replace(/@@SCRIPT(\d+)@@/g, (_, i) => protectedItems[i]);
-                processed = processed.replace(/@@INLINE(\d+)@@/g, (_, i) => protectedItems[i]);
-                processed = processed.replace(/@@BLOCK(\d+)@@/g, (_, i) => protectedItems[i]);
+                processed = processed.replace(/@@PT(\d+)@@/g, (_, i) => protectedItems[i]);
             }
 
             return { text: processed, removed: removedCount };
@@ -150,10 +133,13 @@
     };
 
     // ========================================================================
-    // MODULE: UI (Visuals)
+    // MODULE: UI
     // ========================================================================
     const UI = {
         notify(msg, type = 'info') {
+            // Check setting before showing toast
+            if (!Core.getSettings().notifications) return; 
+
             if (typeof toastr !== 'undefined' && toastr[type]) toastr[type](msg, 'Ellipsis Cleaner');
             else console.log(`[EllipsisCleaner] ${msg}`);
         },
@@ -167,16 +153,13 @@
             if (!ctx) return;
 
             try {
-                // 1. Commit Data
                 if (typeof ctx.saveChat === 'function') await ctx.saveChat();
                 const nonce = Date.now();
                 if (Array.isArray(ctx.chat)) ctx.chat = ctx.chat.map(m => ({ ...m, _rmNonce: nonce }));
                 ctx.eventSource?.emit?.(ctx.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' });
                 
-                // 2. Standard Render
                 if (typeof ctx.renderChat === 'function') await ctx.renderChat();
 
-                // 3. FORCE VISUAL UPDATE (With Protection Sync)
                 if (forceVisualUpdate && typeof document !== 'undefined') {
                     const settings = Core.getSettings();
                     const selector = '.mes_text, .message-text, .chat-message .mes';
@@ -189,30 +172,17 @@
                             const parent = tn.parentNode;
                             const tagName = parent.nodeName;
 
-                            // VISUAL PROTECTION LOGIC:
-                            // If code protection is ON, we must NOT clean text inside specific tags.
                             if (settings.protectCode) {
-                                // Always protect technical tags
                                 if (['CODE', 'PRE', 'SCRIPT', 'STYLE'].includes(tagName)) continue;
-                                
-                                // Protect HTML Structure tags (P, DIV, SPAN) ONLY if they are nested 
-                                // (i.e., not the main SillyTavern message container)
                                 if (['P', 'DIV', 'SPAN'].includes(tagName)) {
-                                    // Check if this tag is the main message container.
-                                    // If it HAS the class 'mes_text' (or similar), it's the root, so CLEAN IT.
-                                    // If it does NOT have that class, it's a nested user tag, so PROTECT IT.
                                     const isRootContainer = parent.classList.contains('mes_text') || 
                                                           parent.classList.contains('message-text') || 
                                                           parent.classList.contains('mes');
-                                    
-                                    if (!isRootContainer) continue; // Skip/Protect this nested tag
+                                    if (!isRootContainer) continue; 
                                 }
                             }
 
-                            // If allowed, clean the text node
                             const original = tn.nodeValue;
-                            // Note: cleanText is called on raw text here, so its internal regex protection 
-                            // won't trigger (no tags in raw text), which is why the parent check above is crucial.
                             const res = Cleaner.cleanText(original, settings);
                             if (res.removed > 0) {
                                 tn.nodeValue = res.text;
@@ -248,7 +218,9 @@
             ctx.chat.forEach(msg => {
                 if (typeof msg.mes === 'string') count += Cleaner.cleanText(msg.mes, st).removed;
             });
-            UI.notify(count > 0 ? `Found ${count} dots.` : 'No dots found.', 'info');
+            // Force notification for manual check even if disabled globally
+            if (st.notifications) UI.notify(count > 0 ? `Found ${count} dots.` : 'No dots found.', 'info');
+            else if (typeof toastr !== 'undefined') toastr.info(count > 0 ? `Found ${count} dots.` : 'No dots found.', 'Check Result');
         },
 
         injectSettings() {
@@ -280,7 +252,7 @@
                             <span>Remove ".."</span>
                         </label>
                         
-                        <label class="checkbox_label" title="Protects content inside <p>, <div>, <span>, <code>...">
+                        <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-protect" />
                             <span>Protect Code & HTML</span>
                         </label>
@@ -288,6 +260,11 @@
                         <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-space" />
                             <span>Preserve Space</span>
+                        </label>
+
+                        <label class="checkbox_label" title="Show toast notifications when cleaning">
+                            <input type="checkbox" id="rm-ell-notify" />
+                            <span>Show Notifications</span>
                         </label>
 
                         <div style="display: flex; gap: 5px; margin-top: 10px;">
@@ -306,6 +283,7 @@
             $('#rm-ell-twodots').prop('checked', st.treatTwoDots);
             $('#rm-ell-space').prop('checked', st.preserveSpace);
             $('#rm-ell-protect').prop('checked', st.protectCode !== false);
+            $('#rm-ell-notify').prop('checked', st.notifications !== false);
         },
 
         bindEvents() {
@@ -343,6 +321,12 @@
             $(document).on('change', '#rm-ell-protect', (e) => {
                 updateSetting('protectCode', e.target.checked);
                 UI.notify(`Code Protection: ${e.target.checked ? 'ON' : 'OFF'}`);
+            });
+            
+            // Notification Toggle Event
+            $(document).on('change', '#rm-ell-notify', (e) => {
+                updateSetting('notifications', e.target.checked);
+                if(e.target.checked) UI.notify('Notifications Enabled', 'success');
             });
 
             $(document).on('click', '#rm-ell-btn-clean', async (e) => {
