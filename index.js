@@ -1,4 +1,4 @@
-/* Remove Ellipsis — Added Non-Thai Parentheses Removal */
+/* Remove Ellipsis — Native UI Style */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -14,7 +14,7 @@
         preserveSpace: true,
         protectCode: true,
         notifications: true,
-        removeEnglishParentheses: false // New Option
+        removeEnglishParentheses: false 
     };
 
     // ========================================================================
@@ -72,7 +72,6 @@
             }
 
             // --- FEATURE: Remove Non-Thai Parentheses ---
-            // Pattern: \s* (space before) + ( + non-Thai chars + )
             if (settings.removeEnglishParentheses) {
                 const parensRegex = /\s*\([^\u0E00-\u0E7F]+\)/g;
                 processed = processed.replace(parensRegex, (match) => {
@@ -166,6 +165,7 @@
                 if (typeof ctx.renderChat === 'function') await ctx.renderChat();
 
                 if (forceVisualUpdate && typeof document !== 'undefined') {
+                    // Quick DOM update for feedback
                     const settings = Core.getSettings();
                     const selector = '.mes_text, .message-text, .chat-message .mes';
                     const nodes = document.querySelectorAll(selector);
@@ -175,23 +175,12 @@
                         let tn;
                         while (tn = walker.nextNode()) {
                             const parent = tn.parentNode;
-                            const tagName = parent.nodeName;
-
-                            if (settings.protectCode) {
-                                if (['CODE', 'PRE', 'SCRIPT', 'STYLE'].includes(tagName)) continue;
-                                if (['P', 'DIV', 'SPAN'].includes(tagName)) {
-                                    const isRootContainer = parent.classList.contains('mes_text') || 
-                                                          parent.classList.contains('message-text') || 
-                                                          parent.classList.contains('mes');
-                                    if (!isRootContainer) continue; 
-                                }
-                            }
-
+                            // Basic protection check for immediate visual feedback
+                            if (settings.protectCode && ['CODE', 'PRE', 'SCRIPT', 'STYLE'].includes(parent.nodeName)) continue;
+                            
                             const original = tn.nodeValue;
                             const res = Cleaner.cleanText(original, settings);
-                            if (res.removed > 0) {
-                                tn.nodeValue = res.text;
-                            }
+                            if (res.removed > 0) tn.nodeValue = res.text;
                         }
                     });
                 }
@@ -233,21 +222,22 @@
             const container = $('#extensions_settings');
             if (!container.length || $('#remove-ellipsis-settings').length) return;
 
+            // Updated HTML to match standard SillyTavern inline-drawer
             const html = `
             <div id="remove-ellipsis-settings" class="extension_settings_block">
-                <div class="rm-settings-drawer">
-                    <div class="rm-settings-header" title="Click to open/close">
-                        <span class="rm-label">Remove Ellipsis & Cleaner</span>
-                        <div class="rm-icon fa-solid fa-circle-chevron-down"></div>
+                <div class="inline-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b>Remove Ellipsis & Cleaner</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                     </div>
-                    <div class="rm-settings-content" style="display:none;">
+                    <div class="inline-drawer-content" style="display:none;">
                         
                         <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-auto" />
                             <span>Auto Remove</span>
                         </label>
 
-                        <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 5px 0;"></div>
+                        <hr class="sysHR" style="margin: 5px 0;">
 
                         <label class="checkbox_label" title="Removes (English text inside) but keeps (Thai text)">
                             <input type="checkbox" id="rm-ell-parens" />
@@ -266,10 +256,10 @@
 
                         <label class="checkbox_label" title="DANGER: Removes every single dot '.'">
                             <input type="checkbox" id="rm-ell-all" />
-                            <span style="color: #ffaaaa;">Remove ALL Dots (.)</span>
+                            <span style="color: var(--smart-theme-color-red, #ffaaaa);">Remove ALL Dots (.)</span>
                         </label>
 
-                        <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 5px 0;"></div>
+                        <hr class="sysHR" style="margin: 5px 0;">
                         
                         <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-protect" />
@@ -281,7 +271,7 @@
                             <span>Show Notifications</span>
                         </label>
 
-                        <div style="display: flex; gap: 5px; margin-top: 10px;">
+                        <div class="rm-action-bar" style="display: flex; gap: 10px; margin-top: 10px;">
                             <button id="rm-ell-btn-clean" class="menu_button">Clean Now</button>
                             <button id="rm-ell-btn-check" class="menu_button">Check</button>
                         </div>
@@ -298,23 +288,28 @@
             $('#rm-ell-space').prop('checked', st.preserveSpace);
             $('#rm-ell-protect').prop('checked', st.protectCode !== false);
             $('#rm-ell-notify').prop('checked', st.notifications !== false);
-            $('#rm-ell-parens').prop('checked', st.removeEnglishParentheses); // Bind new setting
+            $('#rm-ell-parens').prop('checked', st.removeEnglishParentheses);
         },
 
         bindEvents() {
             if (this._eventsBound) return;
             this._eventsBound = true;
 
-            $(document).on('click', '#remove-ellipsis-settings .rm-settings-header', function(e) {
+            // Updated toggle logic for standard drawer class
+            $(document).on('click', '#remove-ellipsis-settings .inline-drawer-header', function(e) {
                 e.preventDefault();
-                const content = $(this).next('.rm-settings-content');
-                const icon = $(this).find('.rm-icon');
+                const content = $(this).parent().find('.inline-drawer-content');
+                const icon = $(this).find('.inline-drawer-icon');
+                content.slideToggle(200, 'swing', () => {
+                    // Optional: Rotate icon via transform if not handled by CSS 'down' class
+                });
+                
+                // Toggle rotation class (SillyTavern standard usually creates rotation on transition, 
+                // but checking/unchecking 'down' class is a common pattern for these scripts)
                 if (content.is(':visible')) {
-                    content.slideUp(150);
-                    icon.removeClass('down');
+                    icon.removeClass('down'); // Rotate up
                 } else {
-                    content.slideDown(150);
-                    icon.addClass('down');
+                    icon.addClass('down'); // Rotate down
                 }
             });
 
@@ -341,8 +336,6 @@
                 updateSetting('notifications', e.target.checked);
                 if(e.target.checked) UI.notify('Notifications Enabled', 'success');
             });
-
-            // New Event Listener
             $(document).on('change', '#rm-ell-parens', (e) => {
                 updateSetting('removeEnglishParentheses', e.target.checked);
                 UI.notify(`Remove Non-Thai Parentheses: ${e.target.checked ? 'ON' : 'OFF'}`);
@@ -350,12 +343,11 @@
 
             $(document).on('click', '#rm-ell-btn-clean', async (e) => {
                 e.preventDefault();
-                UI.closeDrawer();
+                // UI.closeDrawer(); // Don't auto-close drawer, user might want to click again
                 await App.removeAll();
             });
             $(document).on('click', '#rm-ell-btn-check', async (e) => {
                 e.preventDefault();
-                UI.closeDrawer();
                 await App.checkAll();
             });
         },
@@ -368,6 +360,7 @@
                     if (Core.getSettings().autoRemove) await App.removeAll();
                 });
             }
+            // Bind legacy send form just in case
             const form = document.querySelector('form.send-form, #send_form');
             if (form) form.addEventListener('submit', () => {
                if (Core.getSettings().autoRemove) setTimeout(() => App.removeAll(), 50);
@@ -380,7 +373,12 @@
         if (typeof document === 'undefined') return;
         const onReady = () => {
             App.init();
-            const obs = new MutationObserver(() => App.injectSettings());
+            // Observer to re-inject if extensions menu is rebuilt
+            const obs = new MutationObserver((mutations) => {
+                if(document.querySelector('#extensions_settings') && !document.querySelector('#remove-ellipsis-settings')) {
+                    App.injectSettings();
+                }
+            });
             const target = document.querySelector('#content') || document.body;
             obs.observe(target, { childList: true, subtree: true });
         };
