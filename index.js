@@ -267,7 +267,6 @@
             </div>`;
 
             // Insert at the end of the settings list (standard behavior)
-            // Or try to insert before a specific known extension if you want strict ordering
             if (typeof $ !== 'undefined') {
                 $(container).append(html);
             } else {
