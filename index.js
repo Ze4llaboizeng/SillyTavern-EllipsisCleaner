@@ -1,14 +1,12 @@
-/* Remove Ellipsis — Native UI Style (Fixed Toggle) */
+/* Remove Ellipsis — Persistent UI Fix */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
     window.__REMOVE_ELLIPSIS_EXT_LOADED__ = true;
 
-    // ========================================================================
-    // MODULE: Constants & Defaults
-    // ========================================================================
     const MODULE_NAME = 'removeEllipsisExt';
     const DEFAULTS = { 
+        enabled: true,          // New: Master Switch
         autoRemove: false, 
         removeAllDots: false, 
         preserveSpace: true,
@@ -17,9 +15,6 @@
         removeEnglishParentheses: false 
     };
 
-    // ========================================================================
-    // MODULE: Core
-    // ========================================================================
     const Core = {
         getContext() {
             try { return window.SillyTavern?.getContext?.() || null; } catch (_) { return null; }
@@ -41,11 +36,9 @@
         }
     };
 
-    // ========================================================================
-    // MODULE: Cleaner
-    // ========================================================================
     const Cleaner = {
         cleanText(text, settings) {
+            if (!settings.enabled) return { text, removed: 0 }; // Master Switch Check
             if (typeof text !== 'string' || !text) return { text, removed: 0 };
 
             const protectedItems = [];
@@ -56,22 +49,15 @@
                 const mask = (regex) => {
                     processed = processed.replace(regex, m => `@@PT${protectedItems.push(m) - 1}@@`);
                 };
-
-                // 1. Markdown
                 mask(/```[\s\S]*?```/g);
                 mask(/`[^`]*`/g);
-
-                // 2. Technical Blocks
                 mask(/<script\b[^>]*>[\s\S]*?<\/script>/gi);
                 mask(/<style\b[^>]*>[\s\S]*?<\/style>/gi);
                 mask(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi);
                 mask(/<code\b[^>]*>[\s\S]*?<\/code>/gi);
-
-                // 3. Attributes
                 mask(/<[^>]+>/g);
             }
 
-            // --- FEATURE: Remove Non-Thai Parentheses ---
             if (settings.removeEnglishParentheses) {
                 const parensRegex = /\s*\([^\u0E00-\u0E7F]+\)/g;
                 processed = processed.replace(parensRegex, (match) => {
@@ -80,7 +66,6 @@
                 });
             }
 
-            // --- FEATURE: Remove Ellipsis ---
             let patternSource;
             if (settings.removeAllDots) {
                 patternSource = "\\.+|…";
@@ -88,7 +73,6 @@
                 patternSource = settings.treatTwoDots ? "(?<!\\d)\\.{2,}(?!\\d)|…" : "(?<!\\d)\\.{3,}(?!\\d)|…";
             }
             const baseRegex = new RegExp(patternSource, 'g');
-
             const specialAfter = new RegExp(`(?:${patternSource})[ \t]*(?=[*"'])`, 'g');
             const specialBefore = new RegExp(`(?<=[*"'])(?:${patternSource})[ \t]*`, 'g');
             
@@ -119,6 +103,8 @@
         cleanMessage(msg) {
             if (!msg) return 0;
             const settings = Core.getSettings();
+            if (!settings.enabled) return 0;
+
             let total = 0;
             if (msg.extra) {
                 ['display_text', 'original'].forEach(f => {
@@ -138,37 +124,29 @@
         }
     };
 
-    // ========================================================================
-    // MODULE: UI
-    // ========================================================================
     const UI = {
         notify(msg, type = 'info') {
             if (!Core.getSettings().notifications) return; 
             if (typeof toastr !== 'undefined' && toastr[type]) toastr[type](msg, 'Ellipsis Cleaner');
             else console.log(`[EllipsisCleaner] ${msg}`);
         },
-
         closeDrawer() {
             if (typeof $ !== 'undefined') $('.drawer-overlay').trigger('click');
         },
-
         async refreshChat(forceVisualUpdate = false) {
             const ctx = Core.getContext();
             if (!ctx) return;
-
             try {
                 if (typeof ctx.saveChat === 'function') await ctx.saveChat();
                 const nonce = Date.now();
                 if (Array.isArray(ctx.chat)) ctx.chat = ctx.chat.map(m => ({ ...m, _rmNonce: nonce }));
                 ctx.eventSource?.emit?.(ctx.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' });
-                
                 if (typeof ctx.renderChat === 'function') await ctx.renderChat();
 
                 if (forceVisualUpdate && typeof document !== 'undefined') {
                     const settings = Core.getSettings();
                     const selector = '.mes_text, .message-text, .chat-message .mes';
                     const nodes = document.querySelectorAll(selector);
-                    
                     nodes.forEach(node => {
                         const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
                         let tn;
@@ -185,12 +163,11 @@
         }
     };
 
-    // ========================================================================
-    // MODULE: App
-    // ========================================================================
     const App = {
         async removeAll() {
             const ctx = Core.getContext();
+            const st = Core.getSettings();
+            if (!st.enabled) return UI.notify('Extension is Disabled.', 'warning');
             if (!ctx?.chat) return;
             
             let count = 0;
@@ -198,7 +175,7 @@
             await UI.refreshChat(true); 
             
             if (count > 0) UI.notify(`Removed ${count} chars.`, 'success');
-            else UI.notify('Nothing found (or protected).', 'info');
+            else UI.notify('Nothing found.', 'info');
         },
 
         async checkAll() {
@@ -206,6 +183,8 @@
             if (!ctx?.chat) return;
             let count = 0;
             const st = Core.getSettings();
+            if (!st.enabled) return UI.notify('Extension is Disabled.', 'warning');
+
             ctx.chat.forEach(msg => {
                 if (typeof msg.mes === 'string') count += Cleaner.cleanText(msg.mes, st).removed;
             });
@@ -215,27 +194,35 @@
         },
 
         injectSettings() {
-            if (typeof $ === 'undefined') return;
-            const container = $('#extensions_settings');
-            if (!container.length || $('#remove-ellipsis-settings').length) return;
+            const container = document.getElementById('extensions_settings');
+            if (!container) return;
+            if (document.getElementById('remove-ellipsis-settings')) return;
 
+            // Updated HTML: Added "Power Switch" in the header
             const html = `
             <div id="remove-ellipsis-settings" class="extension_settings_block">
                 <div class="inline-drawer">
                     <div class="inline-drawer-toggle inline-drawer-header">
-                        <b>Remove Ellipsis & Cleaner</b>
-                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+                            <div style="display: flex; align-items: center; gap: 10px;">
+                                <b class="rm-label">Remove Ellipsis & Cleaner</b>
+                                <label class="checkbox_label" style="margin:0;" title="Enable/Disable Extension">
+                                    <input type="checkbox" id="rm-ell-enabled" />
+                                </label>
+                            </div>
+                            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                        </div>
                     </div>
                     <div class="inline-drawer-content" style="display:none;">
                         
                         <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-auto" />
-                            <span>Auto Remove</span>
+                            <span>Auto Remove on Message</span>
                         </label>
 
                         <hr class="sysHR" style="margin: 5px 0;">
 
-                        <label class="checkbox_label" title="Removes (English text inside) but keeps (Thai text)">
+                        <label class="checkbox_label" title="Removes (English text) but keeps (Thai text)">
                             <input type="checkbox" id="rm-ell-parens" />
                             <span>Remove (Non-Thai)</span>
                         </label>
@@ -262,7 +249,7 @@
                             <span>Protect Code & HTML</span>
                         </label>
 
-                        <label class="checkbox_label" title="Show toast notifications when cleaning">
+                        <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-notify" />
                             <span>Show Notifications</span>
                         </label>
@@ -275,36 +262,43 @@
                 </div>
             </div>`;
 
-            container.append(html);
-            const st = Core.getSettings();
+            if (typeof $ !== 'undefined') {
+                $(container).append(html);
+            } else {
+                container.insertAdjacentHTML('beforeend', html);
+            }
 
-            $('#rm-ell-auto').prop('checked', st.autoRemove);
-            $('#rm-ell-all').prop('checked', st.removeAllDots);
-            $('#rm-ell-twodots').prop('checked', st.treatTwoDots);
-            $('#rm-ell-space').prop('checked', st.preserveSpace);
-            $('#rm-ell-protect').prop('checked', st.protectCode !== false);
-            $('#rm-ell-notify').prop('checked', st.notifications !== false);
-            $('#rm-ell-parens').prop('checked', st.removeEnglishParentheses);
+            const st = Core.getSettings();
+            const setChecked = (id, val) => { const el = document.getElementById(id); if (el) el.checked = val; };
+
+            setChecked('rm-ell-enabled', st.enabled);
+            setChecked('rm-ell-auto', st.autoRemove);
+            setChecked('rm-ell-all', st.removeAllDots);
+            setChecked('rm-ell-twodots', st.treatTwoDots);
+            setChecked('rm-ell-space', st.preserveSpace);
+            setChecked('rm-ell-protect', st.protectCode !== false);
+            setChecked('rm-ell-notify', st.notifications !== false);
+            setChecked('rm-ell-parens', st.removeEnglishParentheses);
         },
 
         bindEvents() {
             if (this._eventsBound) return;
             this._eventsBound = true;
 
-            // FIX: Explicitly handle slideDown/Up based on hidden state to prevent toggle conflicts
+            // Header Click Logic (Ignore clicks on the checkbox itself)
             $(document).on('click', '#remove-ellipsis-settings .inline-drawer-header', function(e) {
+                if ($(e.target).is('input') || $(e.target).is('label')) return; // Allow checkbox clicking
                 e.preventDefault();
                 const container = $(this).closest('.inline-drawer');
                 const content = container.find('.inline-drawer-content');
                 const icon = container.find('.inline-drawer-icon');
                 
-                // If content is hidden, we open it
                 if (content.is(':hidden')) {
                     content.slideDown(200);
-                    icon.removeClass('down'); // Rotate icon up
+                    icon.removeClass('down');
                 } else {
                     content.slideUp(200);
-                    icon.addClass('down'); // Rotate icon down
+                    icon.addClass('down');
                 }
             });
 
@@ -313,37 +307,26 @@
                 Core.saveSettings();
             };
 
-            $(document).on('change', '#rm-ell-auto', (e) => {
-                updateSetting('autoRemove', e.target.checked);
-                UI.notify(`Auto Remove: ${e.target.checked ? 'ON' : 'OFF'}`);
-            });
-            $(document).on('change', '#rm-ell-all', (e) => {
-                updateSetting('removeAllDots', e.target.checked);
-                if(e.target.checked) UI.notify("Warning: Will remove ALL periods!", 'warning');
-            });
-            $(document).on('change', '#rm-ell-twodots', (e) => updateSetting('treatTwoDots', e.target.checked));
-            $(document).on('change', '#rm-ell-space', (e) => updateSetting('preserveSpace', e.target.checked));
-            $(document).on('change', '#rm-ell-protect', (e) => {
-                updateSetting('protectCode', e.target.checked);
-                UI.notify(`Code Protection: ${e.target.checked ? 'ON' : 'OFF'}`);
-            });
-            $(document).on('change', '#rm-ell-notify', (e) => {
-                updateSetting('notifications', e.target.checked);
-                if(e.target.checked) UI.notify('Notifications Enabled', 'success');
-            });
-            $(document).on('change', '#rm-ell-parens', (e) => {
-                updateSetting('removeEnglishParentheses', e.target.checked);
-                UI.notify(`Remove Non-Thai Parentheses: ${e.target.checked ? 'ON' : 'OFF'}`);
-            });
+            const bindCheck = (id, key, msg) => {
+                $(document).on('change', `#${id}`, (e) => {
+                    updateSetting(key, e.target.checked);
+                    if (msg) UI.notify(typeof msg === 'function' ? msg(e.target.checked) : msg);
+                });
+            };
 
-            $(document).on('click', '#rm-ell-btn-clean', async (e) => {
-                e.preventDefault();
-                await App.removeAll();
-            });
-            $(document).on('click', '#rm-ell-btn-check', async (e) => {
-                e.preventDefault();
-                await App.checkAll();
-            });
+            // Bind Master Switch
+            bindCheck('rm-ell-enabled', 'enabled', v => `Extension ${v ? 'Enabled' : 'Disabled'}`);
+            
+            bindCheck('rm-ell-auto', 'autoRemove', v => `Auto Remove: ${v ? 'ON' : 'OFF'}`);
+            bindCheck('rm-ell-all', 'removeAllDots', v => v ? "Warning: Will remove ALL periods!" : null);
+            bindCheck('rm-ell-twodots', 'treatTwoDots', null);
+            bindCheck('rm-ell-space', 'preserveSpace', null);
+            bindCheck('rm-ell-protect', 'protectCode', v => `Code Protection: ${v ? 'ON' : 'OFF'}`);
+            bindCheck('rm-ell-notify', 'notifications', v => v ? 'Notifications Enabled' : null);
+            bindCheck('rm-ell-parens', 'removeEnglishParentheses', v => `Remove Non-Thai Parentheses: ${v ? 'ON' : 'OFF'}`);
+
+            $(document).on('click', '#rm-ell-btn-clean', async (e) => { e.preventDefault(); await App.removeAll(); });
+            $(document).on('click', '#rm-ell-btn-check', async (e) => { e.preventDefault(); await App.checkAll(); });
         },
 
         init() {
@@ -354,11 +337,18 @@
                     if (Core.getSettings().autoRemove) await App.removeAll();
                 });
             }
+            
             const form = document.querySelector('form.send-form, #send_form');
             if (form) form.addEventListener('submit', () => {
                if (Core.getSettings().autoRemove) setTimeout(() => App.removeAll(), 50);
             }, true);
+
             this.injectSettings();
+
+            // Check every 2 seconds to make sure UI is there
+            setInterval(() => {
+                this.injectSettings();
+            }, 2000);
         }
     };
 
@@ -366,13 +356,9 @@
         if (typeof document === 'undefined') return;
         const onReady = () => {
             App.init();
-            const obs = new MutationObserver((mutations) => {
-                if(document.querySelector('#extensions_settings') && !document.querySelector('#remove-ellipsis-settings')) {
-                    App.injectSettings();
-                }
-            });
+            const obs = new MutationObserver(() => App.injectSettings());
             const target = document.querySelector('#content') || document.body;
-            obs.observe(target, { childList: true, subtree: true });
+            if (target) obs.observe(target, { childList: true, subtree: true });
         };
         if (window.SillyTavern?.getContext) onReady();
         else setTimeout(onReady, 2000); 
