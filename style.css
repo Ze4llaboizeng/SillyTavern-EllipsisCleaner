@@ -1,9 +1,19 @@
-/* Native SillyTavern styles are used via 'inline-drawer' classes */
-
-/* Make sure the header looks clickable */
+/* Fix header visibility and layout */
 #remove-ellipsis-settings .inline-drawer-header {
     cursor: pointer;
     user-select: none;
+    display: flex !important; /* Force display */
+    align-items: center;
+    background-color: var(--block-body-background, rgba(0, 0, 0, 0.3)); /* Ensure background */
+    padding: 10px;
+    border-radius: 10px;
+    margin-bottom: 2px;
+}
+
+#remove-ellipsis-settings .inline-drawer-content {
+    padding: 15px;
+    background-color: rgba(0, 0, 0, 0.2);
+    border-radius: 0 0 10px 10px;
 }
 
 #remove-ellipsis-settings .rm-action-bar .menu_button {
@@ -12,12 +22,8 @@
     justify-content: center;
 }
 
-#remove-ellipsis-settings .inline-drawer-content {
-    padding: 10px;
-    background-color: rgba(0, 0, 0, 0.2);
-    border-radius: 0 0 10px 10px;
-}
-
-#remove-ellipsis-settings .checkbox_label span {
-    user-select: none;
+/* Fix checkbox alignment in header */
+#remove-ellipsis-settings .inline-drawer-header .checkbox_label {
+    min-height: auto;
+    padding: 0;
 }
