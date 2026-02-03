@@ -1,6 +1,10 @@
-/* Native SillyTavern styles are used via 'inline-drawer' classes.
-   This file only adds specific spacing tweaks.
-*/
+/* Native SillyTavern styles are used via 'inline-drawer' classes */
+
+/* Make sure the header looks clickable */
+#remove-ellipsis-settings .inline-drawer-header {
+    cursor: pointer;
+    user-select: none;
+}
 
 #remove-ellipsis-settings .rm-action-bar .menu_button {
     flex: 1;
@@ -8,10 +12,9 @@
     justify-content: center;
 }
 
-/* Ensure the drawer uses standard spacing if ST styles miss it contextually */
 #remove-ellipsis-settings .inline-drawer-content {
     padding: 10px;
-    background-color: rgba(0, 0, 0, 0.2); /* Slight darken for content area usually looks good */
+    background-color: rgba(0, 0, 0, 0.2);
     border-radius: 0 0 10px 10px;
 }
 
