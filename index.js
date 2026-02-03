@@ -1,4 +1,4 @@
-/* Remove Ellipsis — Added Notification Toggle */
+/* Remove Ellipsis — Added Non-Thai Parentheses Removal */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -13,7 +13,8 @@
         removeAllDots: false, 
         preserveSpace: true,
         protectCode: true,
-        notifications: true // New default
+        notifications: true,
+        removeEnglishParentheses: false // New Option
     };
 
     // ========================================================================
@@ -49,6 +50,7 @@
 
             const protectedItems = [];
             let processed = text;
+            let removedCount = 0;
 
             if (settings.protectCode) {
                 const mask = (regex) => {
@@ -65,15 +67,21 @@
                 mask(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi);
                 mask(/<code\b[^>]*>[\s\S]*?<\/code>/gi);
 
-                // 3. Structural Blocks
-                //mask(/<p\b[^>]*>[\s\S]*?<\/p>/gi);
-                //mask(/<div\b[^>]*>[\s\S]*?<\/div>/gi);
-                //mask(/<span\b[^>]*>[\s\S]*?<\/span>/gi);
-
-                // 4. Attributes
+                // 3. Attributes
                 mask(/<[^>]+>/g);
             }
 
+            // --- FEATURE: Remove Non-Thai Parentheses ---
+            // Pattern: \s* (space before) + ( + non-Thai chars + )
+            if (settings.removeEnglishParentheses) {
+                const parensRegex = /\s*\([^\u0E00-\u0E7F]+\)/g;
+                processed = processed.replace(parensRegex, (match) => {
+                    removedCount += match.length;
+                    return '';
+                });
+            }
+
+            // --- FEATURE: Remove Ellipsis ---
             let patternSource;
             if (settings.removeAllDots) {
                 patternSource = "\\.+|…";
@@ -85,7 +93,6 @@
             const specialAfter = new RegExp(`(?:${patternSource})[ \t]*(?=[*"'])`, 'g');
             const specialBefore = new RegExp(`(?<=[*"'])(?:${patternSource})[ \t]*`, 'g');
             
-            let removedCount = 0;
             processed = processed
                 .replace(specialBefore, m => { removedCount += m.length; return ''; })
                 .replace(specialAfter, m => { removedCount += m.length; return ''; });
@@ -137,9 +144,7 @@
     // ========================================================================
     const UI = {
         notify(msg, type = 'info') {
-            // Check setting before showing toast
             if (!Core.getSettings().notifications) return; 
-
             if (typeof toastr !== 'undefined' && toastr[type]) toastr[type](msg, 'Ellipsis Cleaner');
             else console.log(`[EllipsisCleaner] ${msg}`);
         },
@@ -206,8 +211,8 @@
             ctx.chat.forEach(msg => count += Cleaner.cleanMessage(msg));
             await UI.refreshChat(true); 
             
-            if (count > 0) UI.notify(`Removed ${count} dots.`, 'success');
-            else UI.notify('No dots found (or protected).', 'info');
+            if (count > 0) UI.notify(`Removed ${count} chars.`, 'success');
+            else UI.notify('Nothing found (or protected).', 'info');
         },
 
         async checkAll() {
@@ -218,9 +223,9 @@
             ctx.chat.forEach(msg => {
                 if (typeof msg.mes === 'string') count += Cleaner.cleanText(msg.mes, st).removed;
             });
-            // Force notification for manual check even if disabled globally
-            if (st.notifications) UI.notify(count > 0 ? `Found ${count} dots.` : 'No dots found.', 'info');
-            else if (typeof toastr !== 'undefined') toastr.info(count > 0 ? `Found ${count} dots.` : 'No dots found.', 'Check Result');
+            const msg = count > 0 ? `Found ${count} chars to clean.` : 'Nothing to clean.';
+            if (st.notifications) UI.notify(msg, 'info');
+            else if (typeof toastr !== 'undefined') toastr.info(msg, 'Check Result');
         },
 
         injectSettings() {
@@ -232,7 +237,7 @@
             <div id="remove-ellipsis-settings" class="extension_settings_block">
                 <div class="rm-settings-drawer">
                     <div class="rm-settings-header" title="Click to open/close">
-                        <span class="rm-label">Remove Ellipsis Cleaner</span>
+                        <span class="rm-label">Remove Ellipsis & Cleaner</span>
                         <div class="rm-icon fa-solid fa-circle-chevron-down"></div>
                     </div>
                     <div class="rm-settings-content" style="display:none;">
@@ -242,24 +247,33 @@
                             <span>Auto Remove</span>
                         </label>
 
-                        <label class="checkbox_label" title="DANGER: Removes every single dot '.'">
-                            <input type="checkbox" id="rm-ell-all" />
-                            <span style="color: #ffaaaa;">Remove ALL Dots (.)</span>
+                        <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 5px 0;"></div>
+
+                        <label class="checkbox_label" title="Removes (English text inside) but keeps (Thai text)">
+                            <input type="checkbox" id="rm-ell-parens" />
+                            <span>Remove (Non-Thai)</span>
                         </label>
-                        
+
                         <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-twodots" />
                             <span>Remove ".."</span>
                         </label>
                         
                         <label class="checkbox_label">
-                            <input type="checkbox" id="rm-ell-protect" />
-                            <span>Protect Code & HTML</span>
-                        </label>
-
-                        <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-space" />
                             <span>Preserve Space</span>
+                        </label>
+
+                        <label class="checkbox_label" title="DANGER: Removes every single dot '.'">
+                            <input type="checkbox" id="rm-ell-all" />
+                            <span style="color: #ffaaaa;">Remove ALL Dots (.)</span>
+                        </label>
+
+                        <div style="border-top: 1px solid rgba(255,255,255,0.1); margin: 5px 0;"></div>
+                        
+                        <label class="checkbox_label">
+                            <input type="checkbox" id="rm-ell-protect" />
+                            <span>Protect Code & HTML</span>
                         </label>
 
                         <label class="checkbox_label" title="Show toast notifications when cleaning">
@@ -284,6 +298,7 @@
             $('#rm-ell-space').prop('checked', st.preserveSpace);
             $('#rm-ell-protect').prop('checked', st.protectCode !== false);
             $('#rm-ell-notify').prop('checked', st.notifications !== false);
+            $('#rm-ell-parens').prop('checked', st.removeEnglishParentheses); // Bind new setting
         },
 
         bindEvents() {
@@ -322,11 +337,15 @@
                 updateSetting('protectCode', e.target.checked);
                 UI.notify(`Code Protection: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
-            
-            // Notification Toggle Event
             $(document).on('change', '#rm-ell-notify', (e) => {
                 updateSetting('notifications', e.target.checked);
                 if(e.target.checked) UI.notify('Notifications Enabled', 'success');
+            });
+
+            // New Event Listener
+            $(document).on('change', '#rm-ell-parens', (e) => {
+                updateSetting('removeEnglishParentheses', e.target.checked);
+                UI.notify(`Remove Non-Thai Parentheses: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
 
             $(document).on('click', '#rm-ell-btn-clean', async (e) => {
