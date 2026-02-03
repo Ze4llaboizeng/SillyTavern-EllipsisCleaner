@@ -194,20 +194,17 @@
         },
 
         injectSettings() {
-            // Target the main extension settings container
             const container = document.getElementById('extensions_settings');
             if (!container) return;
-            
-            // Check if we already exist
             if (document.getElementById('remove-ellipsis-settings')) return;
 
-            // Updated HTML Structure: Removed 'inline-drawer-toggle' class to prevent event conflict
+            // HTML Structure: คืนค่า 'inline-drawer-toggle' เพื่อให้ UI เหมือนต้นฉบับ
             const html = `
             <div id="remove-ellipsis-settings" class="extension_settings_block">
                 <div class="inline-drawer">
-                    <div class="inline-drawer-header">
+                    <div class="inline-drawer-header inline-drawer-toggle">
                         <b>Remove Ellipsis & Cleaner</b>
-                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
                     </div>
                     
                     <div class="inline-drawer-content" style="display:none;">
@@ -265,7 +262,6 @@
                 </div>
             </div>`;
 
-            // Insert at the end of the settings list (standard behavior)
             if (typeof $ !== 'undefined') {
                 $(container).append(html);
             } else {
@@ -289,17 +285,8 @@
             if (this._eventsBound) return;
             this._eventsBound = true;
 
-            // Use standard SillyTavern drawer toggling logic
-            $(document).on('click', '#remove-ellipsis-settings .inline-drawer-header', function(e) {
-                // Prevent toggling if clicking directly on inputs inside header (if any)
-                if ($(e.target).is('input, label, label *')) return;
-                
-                const content = $(this).closest('.inline-drawer').find('.inline-drawer-content');
-                const icon = $(this).find('.inline-drawer-icon');
-                
-                content.slideToggle(200, 'swing');
-                icon.toggleClass('down');
-            });
+            // REMOVED: Custom click handler for .inline-drawer-header
+            // เพราะเราใช้ class 'inline-drawer-toggle' แล้ว SillyTavern จะจัดการคลิกให้เองแบบ Native
 
             const updateSetting = (key, val) => {
                 Core.getSettings()[key] = val;
@@ -340,13 +327,8 @@
                if (Core.getSettings().autoRemove) setTimeout(() => App.removeAll(), 50);
             }, true);
 
-            // Initial injection
             this.injectSettings();
-
-            // Re-check periodically to ensure UI persistence
-            setInterval(() => {
-                this.injectSettings();
-            }, 2000);
+            setInterval(() => { this.injectSettings(); }, 2000);
         }
     };
 
@@ -354,12 +336,10 @@
         if (typeof document === 'undefined') return;
         const onReady = () => {
             App.init();
-            // Also observe DOM for resets
             const obs = new MutationObserver(() => App.injectSettings());
             const target = document.querySelector('#content') || document.body;
             if (target) obs.observe(target, { childList: true, subtree: true });
         };
-        // Wait slightly longer to ensure ST UI is fully built
         if (window.SillyTavern?.getContext) setTimeout(onReady, 500);
         else setTimeout(onReady, 2000); 
     })();
