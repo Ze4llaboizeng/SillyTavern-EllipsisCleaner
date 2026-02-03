@@ -201,12 +201,11 @@
             // Check if we already exist
             if (document.getElementById('remove-ellipsis-settings')) return;
 
-            // Updated HTML Structure to match Native Extensions exactly
-            // Using "extension_settings_block" directly inside the container is standard.
+            // Updated HTML Structure: Removed 'inline-drawer-toggle' class to prevent event conflict
             const html = `
             <div id="remove-ellipsis-settings" class="extension_settings_block">
                 <div class="inline-drawer">
-                    <div class="inline-drawer-toggle inline-drawer-header">
+                    <div class="inline-drawer-header">
                         <b>Remove Ellipsis & Cleaner</b>
                         <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                     </div>
