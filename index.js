@@ -165,7 +165,6 @@
                 if (typeof ctx.renderChat === 'function') await ctx.renderChat();
 
                 if (forceVisualUpdate && typeof document !== 'undefined') {
-                    // Quick DOM update for feedback
                     const settings = Core.getSettings();
                     const selector = '.mes_text, .message-text, .chat-message .mes';
                     const nodes = document.querySelectorAll(selector);
@@ -176,7 +175,6 @@
                         while (tn = walker.nextNode()) {
                             const parent = tn.parentNode;
                             if (settings.protectCode && ['CODE', 'PRE', 'SCRIPT', 'STYLE'].includes(parent.nodeName)) continue;
-                            
                             const original = tn.nodeValue;
                             const res = Cleaner.cleanText(original, settings);
                             if (res.removed > 0) tn.nodeValue = res.text;
@@ -221,13 +219,12 @@
             const container = $('#extensions_settings');
             if (!container.length || $('#remove-ellipsis-settings').length) return;
 
-            // Note: Removed 'down' class from icon initially because it starts closed (display:none)
             const html = `
             <div id="remove-ellipsis-settings" class="extension_settings_block">
                 <div class="inline-drawer">
                     <div class="inline-drawer-toggle inline-drawer-header">
                         <b>Remove Ellipsis & Cleaner</b>
-                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                     </div>
                     <div class="inline-drawer-content" style="display:none;">
                         
@@ -294,17 +291,21 @@
             if (this._eventsBound) return;
             this._eventsBound = true;
 
-            // Updated toggle logic: simpler and more robust
+            // FIX: Explicitly handle slideDown/Up based on hidden state to prevent toggle conflicts
             $(document).on('click', '#remove-ellipsis-settings .inline-drawer-header', function(e) {
                 e.preventDefault();
-                const content = $(this).parent().find('.inline-drawer-content');
-                const icon = $(this).find('.inline-drawer-icon');
+                const container = $(this).closest('.inline-drawer');
+                const content = container.find('.inline-drawer-content');
+                const icon = container.find('.inline-drawer-icon');
                 
-                // Use stop() to clear animation queue, prevent bouncing if clicked fast
-                content.stop().slideToggle(200, 'swing');
-                
-                // Simply toggle the class. If it was closed (no class), it adds 'down' (open).
-                icon.toggleClass('down');
+                // If content is hidden, we open it
+                if (content.is(':hidden')) {
+                    content.slideDown(200);
+                    icon.removeClass('down'); // Rotate icon up
+                } else {
+                    content.slideUp(200);
+                    icon.addClass('down'); // Rotate icon down
+                }
             });
 
             const updateSetting = (key, val) => {
