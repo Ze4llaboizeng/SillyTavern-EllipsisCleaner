@@ -1,4 +1,4 @@
-/* Remove Ellipsis — Native UI Style */
+/* Remove Ellipsis — Native UI Style (Fixed Toggle) */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -175,7 +175,6 @@
                         let tn;
                         while (tn = walker.nextNode()) {
                             const parent = tn.parentNode;
-                            // Basic protection check for immediate visual feedback
                             if (settings.protectCode && ['CODE', 'PRE', 'SCRIPT', 'STYLE'].includes(parent.nodeName)) continue;
                             
                             const original = tn.nodeValue;
@@ -222,13 +221,13 @@
             const container = $('#extensions_settings');
             if (!container.length || $('#remove-ellipsis-settings').length) return;
 
-            // Updated HTML to match standard SillyTavern inline-drawer
+            // Note: Removed 'down' class from icon initially because it starts closed (display:none)
             const html = `
             <div id="remove-ellipsis-settings" class="extension_settings_block">
                 <div class="inline-drawer">
                     <div class="inline-drawer-toggle inline-drawer-header">
                         <b>Remove Ellipsis & Cleaner</b>
-                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
                     </div>
                     <div class="inline-drawer-content" style="display:none;">
                         
@@ -295,22 +294,17 @@
             if (this._eventsBound) return;
             this._eventsBound = true;
 
-            // Updated toggle logic for standard drawer class
+            // Updated toggle logic: simpler and more robust
             $(document).on('click', '#remove-ellipsis-settings .inline-drawer-header', function(e) {
                 e.preventDefault();
                 const content = $(this).parent().find('.inline-drawer-content');
                 const icon = $(this).find('.inline-drawer-icon');
-                content.slideToggle(200, 'swing', () => {
-                    // Optional: Rotate icon via transform if not handled by CSS 'down' class
-                });
                 
-                // Toggle rotation class (SillyTavern standard usually creates rotation on transition, 
-                // but checking/unchecking 'down' class is a common pattern for these scripts)
-                if (content.is(':visible')) {
-                    icon.removeClass('down'); // Rotate up
-                } else {
-                    icon.addClass('down'); // Rotate down
-                }
+                // Use stop() to clear animation queue, prevent bouncing if clicked fast
+                content.stop().slideToggle(200, 'swing');
+                
+                // Simply toggle the class. If it was closed (no class), it adds 'down' (open).
+                icon.toggleClass('down');
             });
 
             const updateSetting = (key, val) => {
@@ -343,7 +337,6 @@
 
             $(document).on('click', '#rm-ell-btn-clean', async (e) => {
                 e.preventDefault();
-                // UI.closeDrawer(); // Don't auto-close drawer, user might want to click again
                 await App.removeAll();
             });
             $(document).on('click', '#rm-ell-btn-check', async (e) => {
@@ -360,7 +353,6 @@
                     if (Core.getSettings().autoRemove) await App.removeAll();
                 });
             }
-            // Bind legacy send form just in case
             const form = document.querySelector('form.send-form, #send_form');
             if (form) form.addEventListener('submit', () => {
                if (Core.getSettings().autoRemove) setTimeout(() => App.removeAll(), 50);
@@ -373,7 +365,6 @@
         if (typeof document === 'undefined') return;
         const onReady = () => {
             App.init();
-            // Observer to re-inject if extensions menu is rebuilt
             const obs = new MutationObserver((mutations) => {
                 if(document.querySelector('#extensions_settings') && !document.querySelector('#remove-ellipsis-settings')) {
                     App.injectSettings();
