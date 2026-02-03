@@ -1,4 +1,4 @@
-/* Remove Ellipsis — Persistent UI Fix */
+/* Remove Ellipsis — Native UI Integration */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -6,7 +6,7 @@
 
     const MODULE_NAME = 'removeEllipsisExt';
     const DEFAULTS = { 
-        enabled: true,          // New: Master Switch
+        enabled: true,          
         autoRemove: false, 
         removeAllDots: false, 
         preserveSpace: true,
@@ -38,7 +38,7 @@
 
     const Cleaner = {
         cleanText(text, settings) {
-            if (!settings.enabled) return { text, removed: 0 }; // Master Switch Check
+            if (!settings.enabled) return { text, removed: 0 };
             if (typeof text !== 'string' || !text) return { text, removed: 0 };
 
             const protectedItems = [];
@@ -194,33 +194,37 @@
         },
 
         injectSettings() {
+            // Target the main extension settings container
             const container = document.getElementById('extensions_settings');
             if (!container) return;
+            
+            // Check if we already exist
             if (document.getElementById('remove-ellipsis-settings')) return;
 
-            // Updated HTML: Added "Power Switch" in the header
+            // Updated HTML Structure to match Native Extensions exactly
+            // Using "extension_settings_block" directly inside the container is standard.
             const html = `
             <div id="remove-ellipsis-settings" class="extension_settings_block">
                 <div class="inline-drawer">
                     <div class="inline-drawer-toggle inline-drawer-header">
-                        <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-                            <div style="display: flex; align-items: center; gap: 10px;">
-                                <b class="rm-label">Remove Ellipsis & Cleaner</b>
-                                <label class="checkbox_label" style="margin:0;" title="Enable/Disable Extension">
-                                    <input type="checkbox" id="rm-ell-enabled" />
-                                </label>
-                            </div>
-                            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-                        </div>
+                        <b>Remove Ellipsis & Cleaner</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
                     </div>
+                    
                     <div class="inline-drawer-content" style="display:none;">
                         
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                            <span><b>Enable Extension</b></span>
+                            <label class="checkbox_label">
+                                <input type="checkbox" id="rm-ell-enabled" />
+                            </label>
+                        </div>
+                        <hr class="sysHR">
+
                         <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-auto" />
                             <span>Auto Remove on Message</span>
                         </label>
-
-                        <hr class="sysHR" style="margin: 5px 0;">
 
                         <label class="checkbox_label" title="Removes (English text) but keeps (Thai text)">
                             <input type="checkbox" id="rm-ell-parens" />
@@ -242,7 +246,7 @@
                             <span style="color: var(--smart-theme-color-red, #ffaaaa);">Remove ALL Dots (.)</span>
                         </label>
 
-                        <hr class="sysHR" style="margin: 5px 0;">
+                        <hr class="sysHR">
                         
                         <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-protect" />
@@ -254,7 +258,7 @@
                             <span>Show Notifications</span>
                         </label>
 
-                        <div class="rm-action-bar" style="display: flex; gap: 10px; margin-top: 10px;">
+                        <div style="display: flex; gap: 5px; margin-top: 10px;">
                             <button id="rm-ell-btn-clean" class="menu_button">Clean Now</button>
                             <button id="rm-ell-btn-check" class="menu_button">Check</button>
                         </div>
@@ -262,6 +266,8 @@
                 </div>
             </div>`;
 
+            // Insert at the end of the settings list (standard behavior)
+            // Or try to insert before a specific known extension if you want strict ordering
             if (typeof $ !== 'undefined') {
                 $(container).append(html);
             } else {
@@ -285,21 +291,16 @@
             if (this._eventsBound) return;
             this._eventsBound = true;
 
-            // Header Click Logic (Ignore clicks on the checkbox itself)
+            // Use standard SillyTavern drawer toggling logic
             $(document).on('click', '#remove-ellipsis-settings .inline-drawer-header', function(e) {
-                if ($(e.target).is('input') || $(e.target).is('label')) return; // Allow checkbox clicking
-                e.preventDefault();
-                const container = $(this).closest('.inline-drawer');
-                const content = container.find('.inline-drawer-content');
-                const icon = container.find('.inline-drawer-icon');
+                // Prevent toggling if clicking directly on inputs inside header (if any)
+                if ($(e.target).is('input, label, label *')) return;
                 
-                if (content.is(':hidden')) {
-                    content.slideDown(200);
-                    icon.removeClass('down');
-                } else {
-                    content.slideUp(200);
-                    icon.addClass('down');
-                }
+                const content = $(this).closest('.inline-drawer').find('.inline-drawer-content');
+                const icon = $(this).find('.inline-drawer-icon');
+                
+                content.slideToggle(200, 'swing');
+                icon.toggleClass('down');
             });
 
             const updateSetting = (key, val) => {
@@ -314,9 +315,7 @@
                 });
             };
 
-            // Bind Master Switch
             bindCheck('rm-ell-enabled', 'enabled', v => `Extension ${v ? 'Enabled' : 'Disabled'}`);
-            
             bindCheck('rm-ell-auto', 'autoRemove', v => `Auto Remove: ${v ? 'ON' : 'OFF'}`);
             bindCheck('rm-ell-all', 'removeAllDots', v => v ? "Warning: Will remove ALL periods!" : null);
             bindCheck('rm-ell-twodots', 'treatTwoDots', null);
@@ -343,9 +342,10 @@
                if (Core.getSettings().autoRemove) setTimeout(() => App.removeAll(), 50);
             }, true);
 
+            // Initial injection
             this.injectSettings();
 
-            // Check every 2 seconds to make sure UI is there
+            // Re-check periodically to ensure UI persistence
             setInterval(() => {
                 this.injectSettings();
             }, 2000);
@@ -356,11 +356,13 @@
         if (typeof document === 'undefined') return;
         const onReady = () => {
             App.init();
+            // Also observe DOM for resets
             const obs = new MutationObserver(() => App.injectSettings());
             const target = document.querySelector('#content') || document.body;
             if (target) obs.observe(target, { childList: true, subtree: true });
         };
-        if (window.SillyTavern?.getContext) onReady();
+        // Wait slightly longer to ensure ST UI is fully built
+        if (window.SillyTavern?.getContext) setTimeout(onReady, 500);
         else setTimeout(onReady, 2000); 
     })();
 
