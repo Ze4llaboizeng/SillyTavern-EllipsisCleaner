@@ -5,5 +5,6 @@
     "description": "ลบจุด (.) และคำแปลภาษาอังกฤษในวงเล็บหลังภาษาไทย โดยละเว้นแท็ก <think>",
     "version": "1.0.0",
     "author": "User",
-    "main": "index.js"
+    "js": "index.js",
+    "css": "style. css"
 }
