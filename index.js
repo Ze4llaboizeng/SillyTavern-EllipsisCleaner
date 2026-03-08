@@ -1,262 +1,212 @@
-/* Remove Ellipsis — Native UI Integration */
-(() => {
-    if (typeof window === 'undefined') { global.window = {}; }
-    if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
-    window.__REMOVE_ELLIPSIS_EXT_LOADED__ = true;
+/**
+ * SillyTavern Extension: Ellipsis Cleaner (Refactored)
+ * จัดการลบจุดไข่ปลา (..., .., .) ทั้งในและนอกแท็ก HTML ยกเว้นในแท็ก <think>
+ */
 
-    const MODULE_NAME = 'removeEllipsisExt';
-    const DEFAULTS = { 
-        enabled: true,          
-        autoRemove: false, 
-        removeAllDots: false, 
-        preserveSpace: true,
-        protectCode: true,
-        notifications: true,
-        removeEnglishParentheses: false 
+(() => {
+    // ป้องกันการโหลดซ้ำ
+    if (window.__ZEAL_ELLIPSIS_LOADED__) return;
+    window.__ZEAL_ELLIPSIS_LOADED__ = true;
+
+    const MODULE_ID = 'zeal_ellipsis_cleaner';
+
+    // 1. การตั้งค่าเริ่มต้น (Default Settings)
+    const DEFAULT_SETTINGS = {
+        enabled: true,
+        autoRemove: false,        // ลบอัตโนมัติเมื่อได้รับข้อความ
+        removeTwoDots: true,      // ลบ '..'
+        removeAllDots: false,     // ลบจุดเดียว '.' (อันตราย)
+        preserveSpace: true,      // เว้นวรรคแทนที่จุด
+        protectThink: true,       // ไม่ลบจุดในแท็ก <think>...</think>
+        protectCode: true         // ไม่ลบจุดใน Code blocks
     };
 
-    const Core = {
-        getContext() {
-            try { return window.SillyTavern?.getContext?.() || null; } catch (_) { return null; }
-        },
-        getSettings() {
-            const ctx = this.getContext();
-            if (!ctx) return structuredClone(DEFAULTS);
-            const store = ctx.extensionSettings || (ctx.extensionSettings = {});
-            if (!store[MODULE_NAME]) store[MODULE_NAME] = {};
-            for (const key of Object.keys(DEFAULTS)) {
-                if (!(key in store[MODULE_NAME])) store[MODULE_NAME][key] = DEFAULTS[key];
+    // 2. ระบบจัดการการตั้งค่า (Settings Manager)
+    const Settings = {
+        get() {
+            const ctx = window.SillyTavern?.getContext?.();
+            if (!ctx) return { ...DEFAULT_SETTINGS };
+            
+            ctx.extensionSettings = ctx.extensionSettings || {};
+            ctx.extensionSettings[MODULE_ID] = ctx.extensionSettings[MODULE_ID] || {};
+            
+            const current = ctx.extensionSettings[MODULE_ID];
+            // ผสานค่าเริ่มต้นเข้ากับค่าที่บันทึกไว้
+            for (const key in DEFAULT_SETTINGS) {
+                if (current[key] === undefined) {
+                    current[key] = DEFAULT_SETTINGS[key];
+                }
             }
-            return store[MODULE_NAME];
+            return current;
         },
-        saveSettings() {
-            const ctx = this.getContext();
+        save() {
+            const ctx = window.SillyTavern?.getContext?.();
             if (ctx?.saveSettingsDebounced) ctx.saveSettingsDebounced();
             else if (ctx?.saveSettings) ctx.saveSettings();
+        },
+        update(key, value) {
+            const st = this.get();
+            st[key] = value;
+            this.save();
         }
     };
 
+    // 3. ระบบจัดการข้อความ (Cleaner Core)
     const Cleaner = {
-        cleanText(text, settings) {
-            if (!settings.enabled) return { text, removed: 0 };
-            if (typeof text !== 'string' || !text) return { text, removed: 0 };
+        processText(text) {
+            const st = Settings.get();
+            if (!st.enabled || typeof text !== 'string' || !text) {
+                return { text: text, removed: 0 };
+            }
 
-            const protectedItems = [];
-            let processed = text;
+            let processedText = text;
+            let protectedItems = [];
             let removedCount = 0;
 
-            if (settings.protectCode) {
-                const mask = (regex) => {
-                    processed = processed.replace(regex, m => `@@PT${protectedItems.push(m) - 1}@@`);
-                };
-                mask(/```[\s\S]*?```/g);
-                mask(/`[^`]*`/g);
-                mask(/<script\b[^>]*>[\s\S]*?<\/script>/gi);
-                mask(/<style\b[^>]*>[\s\S]*?<\/style>/gi);
-                mask(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi);
-                mask(/<code\b[^>]*>[\s\S]*?<\/code>/gi);
-                mask(/<[^>]+>/g);
-            }
-
-            if (settings.removeEnglishParentheses) {
-                const parensRegex = /\s*\([^\u0E00-\u0E7F]+\)/g;
-                processed = processed.replace(parensRegex, (match) => {
-                    removedCount += match.length;
-                    return '';
+            // ฟังก์ชันสำหรับซ่อนข้อความที่ไม่อยากให้โดนลบจุด
+            const mask = (regex) => {
+                processedText = processedText.replace(regex, (match) => {
+                    const index = protectedItems.length;
+                    protectedItems.push(match);
+                    return `@@ZEAL_PROT_${index}@@`;
                 });
-            }
+            };
 
-            let patternSource;
-            if (settings.removeAllDots) {
-                patternSource = "\\.+|…";
+            // --- ส่วนที่ได้รับการปกป้อง (จะไม่ถูกลบจุด) ---
+            if (st.protectThink) {
+                mask(/<think>[\s\S]*?<\/think>/gi); // ปกป้องเนื้อหาในแท็ก <think>
+            }
+            if (st.protectCode) {
+                mask(/```[\s\S]*?```/g); // Code block
+                mask(/`[^`]*`/g);        // Inline code
+                mask(/<(script|style|pre|code)\b[^>]*>[\s\S]*?<\/\1>/gi); // โค้ดเฉพาะ
+            }
+            // หมายเหตุ: เราไม่ใช้ mask(/<[^>]+>/g) แล้ว เพื่อให้ลบจุดใน <b>, <i>, <p> ได้
+
+            // --- กำหนดรูปแบบการลบจุด ---
+            let dotPattern;
+            if (st.removeAllDots) {
+                dotPattern = '\\.+|…'; // ลบจุดทุกรูปแบบ
+            } else if (st.removeTwoDots) {
+                dotPattern = '\\.{2,}|…'; // ลบตั้งแต่ 2 จุดขึ้นไป หรือ …
             } else {
-                patternSource = settings.treatTwoDots ? "(?<!\\d)\\.{2,}(?!\\d)|…" : "(?<!\\d)\\.{3,}(?!\\d)|…";
+                dotPattern = '\\.{3,}|…'; // ลบเฉพาะ 3 จุดขึ้นไป หรือ …
             }
-            const baseRegex = new RegExp(patternSource, 'g');
-            const specialAfter = new RegExp(`(?:${patternSource})[ \t]*(?=[*"'])`, 'g');
-            const specialBefore = new RegExp(`(?<=[*"'])(?:${patternSource})[ \t]*`, 'g');
-            
-            processed = processed
-                .replace(specialBefore, m => { removedCount += m.length; return ''; })
-                .replace(specialAfter, m => { removedCount += m.length; return ''; });
 
-            const mainPattern = settings.preserveSpace ? baseRegex : new RegExp(`(?:${patternSource})[ \t]*`, 'g');
+            // Regex: ไม่จับจุดที่เป็นทศนิยม (เช่น 1.5, 2.0)
+            const regexStr = `(?<!\\d)(?:${dotPattern})(?!\\d)`;
+            const mainRegex = new RegExp(regexStr, 'g');
 
-            processed = processed.replace(mainPattern, (match, offset, fullStr) => {
+            // --- ทำการลบ ---
+            processedText = processedText.replace(mainRegex, (match) => {
                 removedCount += match.length;
-                if (!settings.preserveSpace) return '';
-                const prev = fullStr[offset - 1];
-                const next = fullStr[offset + match.length];
-                const hasSpaceBefore = prev === undefined ? true : /\s/.test(prev);
-                const hasSpaceAfter = next === undefined ? true : /\s/.test(next);
-                if (hasSpaceBefore || hasSpaceAfter) return '';
-                return ' '; 
+                return st.preserveSpace ? ' ' : '';
             });
 
-            if (settings.protectCode) {
-                processed = processed.replace(/@@PT(\d+)@@/g, (_, i) => protectedItems[i]);
+            // จัดการช่องว่างที่ซ้ำซ้อนกัน (ถ้าระบุให้เว้นวรรค)
+            if (st.preserveSpace) {
+                processedText = processedText.replace(/ +/g, ' '); 
             }
 
-            return { text: processed, removed: removedCount };
+            // --- คืนค่าส่วนที่ถูกปกป้องกลับมา ---
+            processedText = processedText.replace(/@@ZEAL_PROT_(\d+)@@/g, (_, index) => {
+                return protectedItems[parseInt(index, 10)];
+            });
+
+            return { text: processedText, removed: removedCount };
         },
 
         cleanMessage(msg) {
             if (!msg) return 0;
-            const settings = Core.getSettings();
-            if (!settings.enabled) return 0;
+            let totalRemoved = 0;
 
-            let total = 0;
             if (msg.extra) {
-                ['display_text', 'original'].forEach(f => {
-                    if (typeof msg.extra[f] === 'string') {
-                        const r = this.cleanText(msg.extra[f], settings);
-                        msg.extra[f] = r.text;
-                        total += r.removed;
+                ['display_text', 'original'].forEach(field => {
+                    if (typeof msg.extra[field] === 'string') {
+                        const res = this.processText(msg.extra[field]);
+                        msg.extra[field] = res.text;
+                        totalRemoved += res.removed;
                     }
                 });
             }
+            
             if (typeof msg.mes === 'string') {
-                const r = this.cleanText(msg.mes, settings);
-                msg.mes = r.text;
-                total += r.removed;
+                const res = this.processText(msg.mes);
+                msg.mes = res.text;
+                totalRemoved += res.removed;
             }
-            return total;
+
+            return totalRemoved;
         }
     };
 
+    // 4. ระบบจัดการหน้าจอและ UI (User Interface)
     const UI = {
-        notify(msg, type = 'info') {
-            if (!Core.getSettings().notifications) return; 
-            if (typeof toastr !== 'undefined' && toastr[type]) toastr[type](msg, 'Ellipsis Cleaner');
-            else console.log(`[EllipsisCleaner] ${msg}`);
-        },
-        closeDrawer() {
-            if (typeof $ !== 'undefined') $('.drawer-overlay').trigger('click');
-        },
-        async refreshChat(forceVisualUpdate = false) {
-            const ctx = Core.getContext();
-            if (!ctx) return;
-            try {
-                if (typeof ctx.saveChat === 'function') await ctx.saveChat();
-                const nonce = Date.now();
-                if (Array.isArray(ctx.chat)) ctx.chat = ctx.chat.map(m => ({ ...m, _rmNonce: nonce }));
-                ctx.eventSource?.emit?.(ctx.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' });
-                if (typeof ctx.renderChat === 'function') await ctx.renderChat();
-
-                if (forceVisualUpdate && typeof document !== 'undefined') {
-                    const settings = Core.getSettings();
-                    const selector = '.mes_text, .message-text, .chat-message .mes';
-                    const nodes = document.querySelectorAll(selector);
-                    nodes.forEach(node => {
-                        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
-                        let tn;
-                        while (tn = walker.nextNode()) {
-                            const parent = tn.parentNode;
-                            if (settings.protectCode && ['CODE', 'PRE', 'SCRIPT', 'STYLE'].includes(parent.nodeName)) continue;
-                            const original = tn.nodeValue;
-                            const res = Cleaner.cleanText(original, settings);
-                            if (res.removed > 0) tn.nodeValue = res.text;
-                        }
-                    });
-                }
-            } catch (e) { console.warn('Refresh error:', e); }
-        }
-    };
-
-    const App = {
-        async removeAll() {
-            const ctx = Core.getContext();
-            const st = Core.getSettings();
-            if (!st.enabled) return UI.notify('Extension is Disabled.', 'warning');
-            if (!ctx?.chat) return;
-            
-            let count = 0;
-            ctx.chat.forEach(msg => count += Cleaner.cleanMessage(msg));
-            await UI.refreshChat(true); 
-            
-            if (count > 0) UI.notify(`Removed ${count} chars.`, 'success');
-            else UI.notify('Nothing found.', 'info');
+        toast(msg, type = 'info') {
+            if (typeof toastr !== 'undefined' && toastr[type]) {
+                toastr[type](msg, 'Ellipsis Cleaner');
+            } else {
+                console.log(`[EllipsisCleaner] ${msg}`);
+            }
         },
 
-        async checkAll() {
-            const ctx = Core.getContext();
-            if (!ctx?.chat) return;
-            let count = 0;
-            const st = Core.getSettings();
-            if (!st.enabled) return UI.notify('Extension is Disabled.', 'warning');
-
-            ctx.chat.forEach(msg => {
-                if (typeof msg.mes === 'string') count += Cleaner.cleanText(msg.mes, st).removed;
-            });
-            const msg = count > 0 ? `Found ${count} chars to clean.` : 'Nothing to clean.';
-            if (st.notifications) UI.notify(msg, 'info');
-            else if (typeof toastr !== 'undefined') toastr.info(msg, 'Check Result');
-        },
-
-        injectSettings() {
+        async renderSettings() {
             const container = document.getElementById('extensions_settings');
-            if (!container) return;
-            if (document.getElementById('remove-ellipsis-settings')) return;
+            if (!container || document.getElementById('zeal-ellipsis-ui')) return;
 
-            // HTML Structure: คืนค่า 'inline-drawer-toggle' เพื่อให้ UI เหมือนต้นฉบับ
+            const st = Settings.get();
             const html = `
-            <div id="remove-ellipsis-settings" class="extension_settings_block">
+            <div id="zeal-ellipsis-ui" class="extension_settings_block">
                 <div class="inline-drawer">
                     <div class="inline-drawer-header inline-drawer-toggle">
-                        <b>Remove Ellipsis & Cleaner</b>
+                        <b>Ellipsis Cleaner 🧹</b>
                         <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
                     </div>
                     
                     <div class="inline-drawer-content" style="display:none;">
-                        
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:5px;">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                             <span><b>Enable Extension</b></span>
                             <label class="checkbox_label">
-                                <input type="checkbox" id="rm-ell-enabled" />
+                                <input type="checkbox" id="zec-enabled" ${st.enabled ? 'checked' : ''} />
                             </label>
                         </div>
                         <hr class="sysHR">
 
                         <label class="checkbox_label">
-                            <input type="checkbox" id="rm-ell-auto" />
-                            <span>Auto Remove on Message</span>
-                        </label>
-
-                        <label class="checkbox_label" title="Removes (English text) but keeps (Thai text)">
-                            <input type="checkbox" id="rm-ell-parens" />
-                            <span>Remove (Non-Thai)</span>
+                            <input type="checkbox" id="zec-auto" ${st.autoRemove ? 'checked' : ''} />
+                            <span>Auto Remove on Message (ลบอัตโนมัติ)</span>
                         </label>
 
                         <label class="checkbox_label">
-                            <input type="checkbox" id="rm-ell-twodots" />
-                            <span>Remove ".."</span>
+                            <input type="checkbox" id="zec-twodots" ${st.removeTwoDots ? 'checked' : ''} />
+                            <span>Remove ".." (ลบแบบ 2 จุด)</span>
+                        </label>
+
+                        <label class="checkbox_label" title="DANGER: ลบจุดทศนิยมและจุดจบประโยคทั้งหมด">
+                            <input type="checkbox" id="zec-alldots" ${st.removeAllDots ? 'checked' : ''} />
+                            <span style="color: var(--smart-theme-color-red, #ff5555);">Remove ALL Dots (.)</span>
                         </label>
                         
                         <label class="checkbox_label">
-                            <input type="checkbox" id="rm-ell-space" />
-                            <span>Preserve Space</span>
-                        </label>
-
-                        <label class="checkbox_label" title="DANGER: Removes every single dot '.'">
-                            <input type="checkbox" id="rm-ell-all" />
-                            <span style="color: var(--smart-theme-color-red, #ffaaaa);">Remove ALL Dots (.)</span>
+                            <input type="checkbox" id="zec-space" ${st.preserveSpace ? 'checked' : ''} />
+                            <span>Preserve Space (แทนที่ด้วยช่องว่าง)</span>
                         </label>
 
                         <hr class="sysHR">
                         
-                        <label class="checkbox_label">
-                            <input type="checkbox" id="rm-ell-protect" />
-                            <span>Protect Code & HTML</span>
+                        <label class="checkbox_label" title="จุดในแท็ก <think> จะไม่ถูกลบ">
+                            <input type="checkbox" id="zec-protect-think" ${st.protectThink ? 'checked' : ''} />
+                            <span style="color: var(--smart-theme-color-green, #55ff55);">Protect &lt;think&gt; tags</span>
                         </label>
 
                         <label class="checkbox_label">
-                            <input type="checkbox" id="rm-ell-notify" />
-                            <span>Show Notifications</span>
+                            <input type="checkbox" id="zec-protect-code" ${st.protectCode ? 'checked' : ''} />
+                            <span>Protect Code Blocks</span>
                         </label>
 
-                        <div style="display: flex; gap: 5px; margin-top: 10px;">
-                            <button id="rm-ell-btn-clean" class="menu_button">Clean Now</button>
-                            <button id="rm-ell-btn-check" class="menu_button">Check</button>
+                        <div style="display: flex; gap: 5px; margin-top: 15px;">
+                            <button id="zec-btn-clean" class="menu_button">Clean Chat Now</button>
+                            <button id="zec-btn-check" class="menu_button">Check Only</button>
                         </div>
                     </div>
                 </div>
@@ -268,81 +218,124 @@
                 container.insertAdjacentHTML('beforeend', html);
             }
 
-            const st = Core.getSettings();
-            const setChecked = (id, val) => { const el = document.getElementById(id); if (el) el.checked = val; };
-
-            setChecked('rm-ell-enabled', st.enabled);
-            setChecked('rm-ell-auto', st.autoRemove);
-            setChecked('rm-ell-all', st.removeAllDots);
-            setChecked('rm-ell-twodots', st.treatTwoDots);
-            setChecked('rm-ell-space', st.preserveSpace);
-            setChecked('rm-ell-protect', st.protectCode !== false);
-            setChecked('rm-ell-notify', st.notifications !== false);
-            setChecked('rm-ell-parens', st.removeEnglishParentheses);
+            this.bindEvents();
         },
 
         bindEvents() {
-            if (this._eventsBound) return;
-            this._eventsBound = true;
-
-            // REMOVED: Custom click handler for .inline-drawer-header
-            // เพราะเราใช้ class 'inline-drawer-toggle' แล้ว SillyTavern จะจัดการคลิกให้เองแบบ Native
-
-            const updateSetting = (key, val) => {
-                Core.getSettings()[key] = val;
-                Core.saveSettings();
-            };
-
-            const bindCheck = (id, key, msg) => {
+            const bindToggle = (id, key, msgCallback) => {
                 $(document).on('change', `#${id}`, (e) => {
-                    updateSetting(key, e.target.checked);
-                    if (msg) UI.notify(typeof msg === 'function' ? msg(e.target.checked) : msg);
+                    const isChecked = e.target.checked;
+                    Settings.update(key, isChecked);
+                    if (msgCallback) this.toast(msgCallback(isChecked));
                 });
             };
 
-            bindCheck('rm-ell-enabled', 'enabled', v => `Extension ${v ? 'Enabled' : 'Disabled'}`);
-            bindCheck('rm-ell-auto', 'autoRemove', v => `Auto Remove: ${v ? 'ON' : 'OFF'}`);
-            bindCheck('rm-ell-all', 'removeAllDots', v => v ? "Warning: Will remove ALL periods!" : null);
-            bindCheck('rm-ell-twodots', 'treatTwoDots', null);
-            bindCheck('rm-ell-space', 'preserveSpace', null);
-            bindCheck('rm-ell-protect', 'protectCode', v => `Code Protection: ${v ? 'ON' : 'OFF'}`);
-            bindCheck('rm-ell-notify', 'notifications', v => v ? 'Notifications Enabled' : null);
-            bindCheck('rm-ell-parens', 'removeEnglishParentheses', v => `Remove Non-Thai Parentheses: ${v ? 'ON' : 'OFF'}`);
+            bindToggle('zec-enabled', 'enabled', v => v ? 'Extension Enabled' : 'Extension Disabled');
+            bindToggle('zec-auto', 'autoRemove', v => `Auto Remove: ${v ? 'ON' : 'OFF'}`);
+            bindToggle('zec-twodots', 'removeTwoDots');
+            bindToggle('zec-alldots', 'removeAllDots', v => v ? "WARNING: Removing ALL periods!" : null);
+            bindToggle('zec-space', 'preserveSpace');
+            bindToggle('zec-protect-think', 'protectThink', v => `Think Protection: ${v ? 'ON' : 'OFF'}`);
+            bindToggle('zec-protect-code', 'protectCode');
 
-            $(document).on('click', '#rm-ell-btn-clean', async (e) => { e.preventDefault(); await App.removeAll(); });
-            $(document).on('click', '#rm-ell-btn-check', async (e) => { e.preventDefault(); await App.checkAll(); });
+            $(document).on('click', '#zec-btn-clean', async () => await Core.cleanAllChats());
+            $(document).on('click', '#zec-btn-check', async () => await Core.checkAllChats());
         },
 
-        init() {
-            const ctx = Core.getContext();
-            this.bindEvents(); 
-            if (ctx?.eventSource) {
-                ctx.eventSource.on(ctx.event_types.MESSAGE_RECEIVED, async () => {
-                    if (Core.getSettings().autoRemove) await App.removeAll();
-                });
-            }
-            
-            const form = document.querySelector('form.send-form, #send_form');
-            if (form) form.addEventListener('submit', () => {
-               if (Core.getSettings().autoRemove) setTimeout(() => App.removeAll(), 50);
-            }, true);
-
-            this.injectSettings();
-            setInterval(() => { this.injectSettings(); }, 2000);
+        async refreshChatView() {
+            const ctx = window.SillyTavern?.getContext?.();
+            if (!ctx) return;
+            try {
+                if (typeof ctx.saveChat === 'function') await ctx.saveChat();
+                if (typeof ctx.renderChat === 'function') await ctx.renderChat();
+            } catch (e) { console.error('Error refreshing chat:', e); }
         }
     };
 
-    (function boot() {
-        if (typeof document === 'undefined') return;
-        const onReady = () => {
-            App.init();
-            const obs = new MutationObserver(() => App.injectSettings());
-            const target = document.querySelector('#content') || document.body;
-            if (target) obs.observe(target, { childList: true, subtree: true });
-        };
-        if (window.SillyTavern?.getContext) setTimeout(onReady, 500);
-        else setTimeout(onReady, 2000); 
-    })();
+    // 5. ระบบแกนกลาง (Main Core)
+    const Core = {
+        async cleanAllChats() {
+            const ctx = window.SillyTavern?.getContext?.();
+            const st = Settings.get();
+            if (!st.enabled) return UI.toast('Extension is Disabled.', 'warning');
+            if (!ctx?.chat || !Array.isArray(ctx.chat)) return;
+            
+            let totalRemoved = 0;
+            ctx.chat.forEach(msg => {
+                totalRemoved += Cleaner.cleanMessage(msg);
+            });
+            
+            if (totalRemoved > 0) {
+                await UI.refreshChatView();
+                UI.toast(`ทำความสะอาดเรียบร้อย! ลบไปทั้งหมด ${totalRemoved} ตัวอักษร`, 'success');
+            } else {
+                UI.toast('ไม่พบจุดไข่ปลาให้ลบ', 'info');
+            }
+        },
 
-    window.RemoveEllipsis = { Core, Cleaner, UI, App };
+        async checkAllChats() {
+            const ctx = window.SillyTavern?.getContext?.();
+            const st = Settings.get();
+            if (!st.enabled) return UI.toast('Extension is Disabled.', 'warning');
+            if (!ctx?.chat || !Array.isArray(ctx.chat)) return;
+
+            let count = 0;
+            ctx.chat.forEach(msg => {
+                if (typeof msg.mes === 'string') {
+                    // ใช้ test แทนการลบจริงเพื่อนับ
+                    count += Cleaner.processText(msg.mes).removed;
+                }
+            });
+
+            if (count > 0) {
+                UI.toast(`ตรวจพบจุดที่สามารถลบได้จำนวน ${count} ตัวอักษร`, 'warning');
+            } else {
+                UI.toast('ข้อความสะอาดดี ไม่มีจุดให้ลบ', 'success');
+            }
+        },
+
+        init() {
+            const ctx = window.SillyTavern?.getContext?.();
+            
+            // รอให้โหลด UI ST เสร็จก่อนแทรก
+            const observer = new MutationObserver(() => {
+                if (document.getElementById('extensions_settings')) {
+                    UI.renderSettings();
+                }
+            });
+            observer.observe(document.body, { childList: true, subtree: true });
+
+            // ผูก Event เมื่อมีการส่งข้อความใหม่ (Auto Remove)
+            if (ctx?.eventSource) {
+                ctx.eventSource.on(ctx.event_types.MESSAGE_RECEIVED, async () => {
+                    if (Settings.get().autoRemove) {
+                        // หน่วงเวลาเล็กน้อยเพื่อให้ข้อความเขียนลง Data เสร็จก่อน
+                        setTimeout(async () => await this.cleanAllChats(), 100);
+                    }
+                });
+            }
+
+            // จัดการเวลาผู้ใช้กดปุ่ม Send ด้วยตัวเอง
+            const sendForms = document.querySelectorAll('form.send-form, #send_form');
+            sendForms.forEach(form => {
+                form.addEventListener('submit', () => {
+                   if (Settings.get().autoRemove) {
+                       setTimeout(async () => await this.cleanAllChats(), 100);
+                   }
+                });
+            });
+        }
+    };
+
+    // 6. เริ่มการทำงาน (Boot)
+    if (typeof document !== 'undefined') {
+        const bootloader = () => {
+            if (window.SillyTavern?.getContext) {
+                Core.init();
+            } else {
+                setTimeout(bootloader, 1000); // รอจนกว่า ST จะพร้อม
+            }
+        };
+        bootloader();
+    }
 })();
