@@ -1,4 +1,3 @@
-/* Remove Ellipsis — Native UI Integration */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -55,6 +54,8 @@
                 mask(/<style\b[^>]*>[\s\S]*?<\/style>/gi);
                 mask(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi);
                 mask(/<code\b[^>]*>[\s\S]*?<\/code>/gi);
+                // เพิ่มการปกป้องแท็ก <think> ทั้งบล็อก
+                mask(/<think\b[^>]*>[\s\S]*?<\/think>/gi);
                 mask(/<[^>]+>/g);
             }
 
@@ -152,7 +153,7 @@
                         let tn;
                         while (tn = walker.nextNode()) {
                             const parent = tn.parentNode;
-                            if (settings.protectCode && ['CODE', 'PRE', 'SCRIPT', 'STYLE'].includes(parent.nodeName)) continue;
+                            if (settings.protectCode && ['CODE', 'PRE', 'SCRIPT', 'STYLE', 'THINK'].includes(parent.nodeName)) continue;
                             const original = tn.nodeValue;
                             const res = Cleaner.cleanText(original, settings);
                             if (res.removed > 0) tn.nodeValue = res.text;
@@ -198,7 +199,6 @@
             if (!container) return;
             if (document.getElementById('remove-ellipsis-settings')) return;
 
-            // HTML Structure: คืนค่า 'inline-drawer-toggle' เพื่อให้ UI เหมือนต้นฉบับ
             const html = `
             <div id="remove-ellipsis-settings" class="extension_settings_block">
                 <div class="inline-drawer">
@@ -246,7 +246,7 @@
                         
                         <label class="checkbox_label">
                             <input type="checkbox" id="rm-ell-protect" />
-                            <span>Protect Code & HTML</span>
+                            <span>Protect Code, HTML & Think</span>
                         </label>
 
                         <label class="checkbox_label">
@@ -285,9 +285,6 @@
             if (this._eventsBound) return;
             this._eventsBound = true;
 
-            // REMOVED: Custom click handler for .inline-drawer-header
-            // เพราะเราใช้ class 'inline-drawer-toggle' แล้ว SillyTavern จะจัดการคลิกให้เองแบบ Native
-
             const updateSetting = (key, val) => {
                 Core.getSettings()[key] = val;
                 Core.saveSettings();
@@ -305,7 +302,7 @@
             bindCheck('rm-ell-all', 'removeAllDots', v => v ? "Warning: Will remove ALL periods!" : null);
             bindCheck('rm-ell-twodots', 'treatTwoDots', null);
             bindCheck('rm-ell-space', 'preserveSpace', null);
-            bindCheck('rm-ell-protect', 'protectCode', v => `Code Protection: ${v ? 'ON' : 'OFF'}`);
+            bindCheck('rm-ell-protect', 'protectCode', v => `Protection: ${v ? 'ON' : 'OFF'}`);
             bindCheck('rm-ell-notify', 'notifications', v => v ? 'Notifications Enabled' : null);
             bindCheck('rm-ell-parens', 'removeEnglishParentheses', v => `Remove Non-Thai Parentheses: ${v ? 'ON' : 'OFF'}`);
 
