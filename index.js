@@ -18,7 +18,7 @@ function cleanText(text) {
     if (!text) return text;
 
     // 1. ลบจุด (.) ยกเว้นใน <think>...</think>
-    // regex จับ <think>...</think> ไว้ใน group 1 ถ้าเจอจะข้ามไป ถ้าเจอ . เดี่ยวๆ จะลบทิ้ง
+    // regex จับ <think>...</think> ไว้ใน group 1 ถ้าเจอจะข้ามไป ถ้าเจอ . นอกแท็ก จะลบทิ้ง
     text = text.replace(/(<think>[\s\S]*?<\/think>)|(\.)/gi, (match, p1) => {
         if (p1) return p1; // คืนค่า <think>... กลับไปเหมือนเดิม
         return ''; // ลบจุด
@@ -31,7 +31,7 @@ function cleanText(text) {
     return text;
 }
 
-async function processMessage(messageId) {
+function processMessage(messageId) {
     // ถ้าปิดสวิตช์ไว้ ให้ข้ามไปไม่ต้องทำอะไร
     if (!extension_settings[extensionName].autoRemove) return;
 
@@ -54,31 +54,30 @@ async function processMessage(messageId) {
 }
 
 async function setupUI() {
-    // สร้างหน้าต่าง UI ในเมนู Extensions ของ SillyTavern
+    // โครงสร้าง HTML สำหรับเมนูตั้งค่า
     const html = `
         <div class="text-cleaner-settings">
-            <div class="inline-drawer">
-                <div class="inline-drawer-toggle inline-drawer-header">
-                    <b>Thai Text & Dot Cleaner</b>
-                    <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
-                </div>
-                <div class="inline-drawer-content" style="display: none;">
-                    <label class="checkbox_label">
-                        <input type="checkbox" id="tc_auto_remove" ${extension_settings[extensionName].autoRemove ? 'checked' : ''}>
-                        เปิดใช้งาน Auto Remove อัตโนมัติ
-                    </label>
-                    <small style="display:block; margin-top:5px; color:var(--SmartThemeQuoteColor);">
-                        * ลบจุด (.) ทั้งหมด ยกเว้นในแท็ก &lt;think&gt;<br>
-                        * ลบคำแปล (ภาษาอังกฤษ) ที่ตามหลังภาษาไทย
-                    </small>
+            <div class="cleaner-header">
+                <span>🧹 Thai Text & Dot Cleaner</span>
+            </div>
+            <div class="cleaner-content">
+                <label class="checkbox_label">
+                    <input type="checkbox" id="tc_auto_remove" ${extension_settings[extensionName].autoRemove ? 'checked' : ''}>
+                    <span>เปิดใช้งาน Auto Remove อัตโนมัติ</span>
+                </label>
+                <div class="cleaner-desc">
+                    <strong>การทำงาน:</strong><br>
+                    • ลบจุด (.) ทั้งหมด ยกเว้นข้อความในแท็ก &lt;think&gt;...&lt;/think&gt;<br>
+                    • ลบวงเล็บภาษาอังกฤษที่ตามหลังภาษาไทย เช่น "แอปเปิ้ล(Apple)" จะเหลือแค่ "แอปเปิ้ล"
                 </div>
             </div>
         </div>
     `;
 
+    // นำไปใส่ในหน้าต่าง Extensions (เมนูรูปจิ๊กซอว์)
     $("#extensions_settings").append(html);
 
-    // บันทึกการตั้งค่าเมื่อกดเปิด/ปิดสวิตช์
+    // บันทึกการตั้งค่าเมื่อผู้ใช้กดติ๊กเปิด/ปิดสวิตช์
     $("#tc_auto_remove").on("change", function() {
         extension_settings[extensionName].autoRemove = !!$(this).prop("checked");
         saveSettingsDebounced();
@@ -88,8 +87,8 @@ async function setupUI() {
 jQuery(async () => {
     await setupUI();
     
-    // ทำงานเมื่อมีข้อความใหม่ตอบกลับมา
+    // ดักจับ Event เมื่อมีข้อความใหม่ตอบกลับมา
     eventSource.on(event_types.MESSAGE_RECEIVED, processMessage);
-    // ทำงานเมื่อเรากด Swipe (ปัดขวาหาข้อความใหม่) หรือข้อความถูกแก้ไข
+    // ดักจับ Event เมื่อผู้ใช้กด Swipe ปัดขวาหาข้อความใหม่ หรือทำการแก้ไขข้อความ (Edit)
     eventSource.on(event_types.MESSAGE_UPDATED, processMessage);
 });
