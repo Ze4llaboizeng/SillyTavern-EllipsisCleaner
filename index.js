@@ -1,203 +1,161 @@
 /**
- * SillyTavern Extension: Reworked Text Cleaner
- * ลบจุด (.) และ วงเล็บภาษาอังกฤษหลังภาษาไทย โดยเว้นแท็ก <think>
+ * SillyTavern Extension - เขียนใหม่จาก 0
+ * ฟังก์ชัน: ลบจุด, ลบ ไทย(อังกฤษ), ข้าม <think>
  */
 
 (function () {
-    const EXT_NAME = 'st-cleaner-reworked';
+    const EXT_ID = 'cleaner_from_zero';
+    let settings = { autoRemove: false };
 
-    // ==========================================
-    // 1. Settings Management
-    // ==========================================
-    const Settings = {
-        data: {
-            autoRemove: false
-        },
-        load() {
-            const context = getContext();
-            if (!context) return;
-            context.extensionSettings = context.extensionSettings || {};
-            if (context.extensionSettings[EXT_NAME]) {
-                Object.assign(this.data, context.extensionSettings[EXT_NAME]);
-            } else {
-                context.extensionSettings[EXT_NAME] = this.data;
-            }
-        },
-        save() {
-            const context = getContext();
-            if (context && context.saveSettingsDebounced) {
-                context.saveSettingsDebounced();
-            }
+    // 1. ฟังก์ชันโหลด/เซฟ การตั้งค่า
+    function loadSettings() {
+        const context = SillyTavern.getContext();
+        if (context.extensionSettings && context.extensionSettings[EXT_ID]) {
+            settings = Object.assign(settings, context.extensionSettings[EXT_ID]);
+        } else {
+            context.extensionSettings[EXT_ID] = settings;
         }
-    };
+    }
 
-    // ==========================================
-    // 2. Text Processor (Core Logic)
-    // ==========================================
-    const Processor = {
-        cleanText(text) {
-            if (typeof text !== 'string' || !text) return text;
+    function saveSettings() {
+        SillyTavern.getContext().saveSettingsDebounced();
+    }
 
-            let processedText = text;
-            const protectedThinkBlocks = [];
-            const protectedHtmlTags = [];
+    // 2. ฟังก์ชันทำความสะอาดข้อความ (Core Logic)
+    function processText(text) {
+        if (!text) return text;
+        
+        let result = text;
+        let thinkBlocks = [];
+        let htmlTags = [];
 
-            // Step 1: ซ่อนแท็ก <think>...</think> ทั้งหมด
-            processedText = processedText.replace(/<think>[\s\S]*?<\/think>/gi, (match) => {
-                protectedThinkBlocks.push(match);
-                return `__THINK_BLOCK_${protectedThinkBlocks.length - 1}__`;
-            });
+        // A. เก็บซ่อนแท็ก <think>...</think> ไว้ก่อน (ห้ามแตะเด็ดขาด)
+        result = result.replace(/<think>[\s\S]*?<\/think>/gi, (match) => {
+            thinkBlocks.push(match);
+            return `__THINK_${thinkBlocks.length - 1}__`;
+        });
 
-            // Step 2: ซ่อน HTML Tags (<...>) เพื่อไม่ให้ Attribute พัง (เช่น .png, .css)
-            processedText = processedText.replace(/<[^>]+>/g, (match) => {
-                protectedHtmlTags.push(match);
-                return `__HTML_TAG_${protectedHtmlTags.length - 1}__`;
-            });
+        // B. เก็บซ่อนโครงสร้างแท็ก HTML (<...>) เพื่อไม่ให้ Attribute พัง (เช่น .png, .jpg)
+        // (ส่วนข้อความที่อยู่นอกแท็กหรือระหว่างแท็ก จะถูกทำความสะอาดตามปกติ)
+        result = result.replace(/<[^>]+>/g, (match) => {
+            htmlTags.push(match);
+            return `__HTML_${htmlTags.length - 1}__`;
+        });
 
-            // Step 3: ลบรูปแบบ ไทย(อังกฤษ) หรือ ไทย(ไม่ใช่ไทย)
-            // จับคู่: (ตัวอักษรไทย) + (ช่องว่างถ้ามี) + (วงเล็บที่ข้างในไม่มีตัวอักษรไทย)
-            const thaiEngRegex = /([\u0E00-\u0E7F]+)(\s*)\([^)\u0E00-\u0E7F]+\)/g;
-            processedText = processedText.replace(thaiEngRegex, '$1$2');
+        // C. ลบรูปแบบ ไทย(อังกฤษ) เช่น โจมตี(Attack) -> โจมตี
+        // อธิบาย Regex: กลุ่ม 1 (ภาษาไทย) + ช่องว่าง(ถ้ามี) + วงเล็บที่มีแต่(อังกฤษ/ตัวเลข/ช่องว่าง)
+        const thaiEngRegex = /([\u0E00-\u0E7F]+)\s*\([A-Za-z\s0-9\-_.,]+\)/g;
+        result = result.replace(thaiEngRegex, '$1');
 
-            // Step 4: ลบจุด (.) และจุดไข่ปลา (…) ทั้งหมด
-            processedText = processedText.replace(/\.+|…/g, '');
+        // D. ลบจุด (.) และจุดไข่ปลา (…) ทั้งหมดที่หลงเหลือ
+        result = result.replace(/\.+|…/g, '');
 
-            // Step 5: คืนค่า HTML Tags
-            processedText = processedText.replace(/__HTML_TAG_(\d+)__/g, (match, index) => {
-                return protectedHtmlTags[index];
-            });
+        // E. คืนค่าแท็ก HTML
+        result = result.replace(/__HTML_(\d+)__/g, (match, index) => {
+            return htmlTags[index];
+        });
 
-            // Step 6: คืนค่าแท็ก <think>
-            processedText = processedText.replace(/__THINK_BLOCK_(\d+)__/g, (match, index) => {
-                return protectedThinkBlocks[index];
-            });
+        // F. คืนค่าแท็ก <think>
+        result = result.replace(/__THINK_(\d+)__/g, (match, index) => {
+            return thinkBlocks[index];
+        });
 
-            return processedText;
-        }
-    };
+        return result;
+    }
 
-    // ==========================================
-    // 3. Chat Handler
-    // ==========================================
-    const Chat = {
-        cleanAllMessages() {
-            const context = getContext();
-            if (!context || !context.chat) return;
+    // 3. ฟังก์ชันสั่งล้างข้อความในแชทปัจจุบันทั้งหมด
+    function cleanChatHistory() {
+        const context = SillyTavern.getContext();
+        if (!context || !context.chat) return;
 
-            let isModified = false;
-
-            context.chat.forEach(msg => {
-                if (msg.mes) {
-                    const newMes = Processor.cleanText(msg.mes);
-                    if (newMes !== msg.mes) {
-                        msg.mes = newMes;
-                        isModified = true;
-                    }
-                }
-            });
-
-            if (isModified) {
-                context.saveChat();
-                if (context.renderChat) context.renderChat();
-                toastr.success('Cleaned messages successfully.', 'Text Cleaner');
-            } else {
-                toastr.info('No text needed cleaning.', 'Text Cleaner');
-            }
-        },
-
-        handleAutoRemove() {
-            if (!Settings.data.autoRemove) return;
-            const context = getContext();
-            if (!context || !context.chat || context.chat.length === 0) return;
-
-            // ตรวจสอบข้อความล่าสุด
-            const lastMsg = context.chat[context.chat.length - 1];
-            if (lastMsg && lastMsg.mes) {
-                const newMes = Processor.cleanText(lastMsg.mes);
-                if (newMes !== lastMsg.mes) {
-                    lastMsg.mes = newMes;
-                    context.saveChat();
-                    // บังคับให้หน้าจออัปเดตข้อความใหม่
-                    if (context.eventSource) {
-                        context.eventSource.emit(context.event_types.CHAT_CHANGED);
-                    }
+        let hasChanged = false;
+        context.chat.forEach(msg => {
+            if (msg.mes) {
+                const newText = processText(msg.mes);
+                if (newText !== msg.mes) {
+                    msg.mes = newText;
+                    hasChanged = true;
                 }
             }
+        });
+
+        if (hasChanged) {
+            context.saveChat();
+            if (context.renderChat) context.renderChat();
+            toastr.success('ทำความสะอาดแชทเรียบร้อยแล้ว', 'Cleaner');
+        } else {
+            toastr.info('ไม่มีข้อความที่ต้องทำความสะอาด', 'Cleaner');
         }
-    };
+    }
 
-    // ==========================================
-    // 4. UI Injection & Events
-    // ==========================================
-    const UI = {
-        inject() {
-            if (document.getElementById('reworked-cleaner-settings')) return;
+    // 4. สร้างหน้าต่าง UI ควบคุม (ฉีดเข้าไปในหน้า Extensions)
+    function buildUI() {
+        if (document.getElementById('cleaner-zero-box')) return;
 
-            const html = `
-            <div id="reworked-cleaner-settings" class="extension_settings_block">
+        const uiHTML = `
+            <div id="cleaner-zero-box" class="extension_settings_block">
                 <div class="inline-drawer">
                     <div class="inline-drawer-header inline-drawer-toggle">
-                        <b>Text Cleaner (Reworked)</b>
+                        <b>✨ Smart Text Cleaner</b>
                         <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
                     </div>
                     <div class="inline-drawer-content" style="display:none;">
-                        
-                        <label class="checkbox_label">
-                            <input type="checkbox" id="cleaner-auto-remove" ${Settings.data.autoRemove ? 'checked' : ''} />
-                            <span>Auto Remove on New Message</span>
-                        </label>
-                        
-                        <p style="font-size: 0.85em; opacity: 0.8; margin-top: 5px;">
-                            - ลบจุด (.) และ (…) ทั้งหมด<br>
-                            - ลบวงเล็บภาษาอังกฤษที่ต่อท้ายภาษาไทย<br>
-                            - ข้ามแท็ก &lt;think&gt; เสมอ
-                        </p>
-
-                        <hr class="sysHR">
-
-                        <div style="display: flex; justify-content: center; margin-top: 10px;">
-                            <button id="cleaner-btn-clean-now" class="menu_button">Clean Chat Now</button>
+                        <div style="margin-bottom: 10px;">
+                            <label class="checkbox_label">
+                                <input type="checkbox" id="cz_auto_remove" ${settings.autoRemove ? 'checked' : ''} />
+                                <span><b>Auto Remove</b> (ลบอัตโนมัติเมื่อ AI ตอบ)</span>
+                            </label>
+                            <p style="font-size: 0.85em; opacity: 0.7; margin: 5px 0 0 25px;">
+                                * ลบ . และ … ใน/นอก HTML<br>
+                                * ลบ ไทย(English) ให้เหลือแค่ ไทย<br>
+                                * ข้ามแท็ก &lt;think&gt; เสมอ
+                            </p>
                         </div>
+                        <hr class="sysHR">
+                        <button id="cz_btn_clean" class="menu_button" style="width: 100%;">
+                            <i class="fa-solid fa-broom"></i> คลีนแชทตอนนี้
+                        </button>
                     </div>
                 </div>
-            </div>`;
+            </div>
+        `;
+        $('#extensions_settings').append(uiHTML);
 
-            $('#extensions_settings').append(html);
-            this.bindEvents();
-        },
+        // ผูก Event ให้ปุ่ม
+        $('#cz_auto_remove').on('change', function () {
+            settings.autoRemove = $(this).is(':checked');
+            saveSettings();
+        });
 
-        bindEvents() {
-            $('#cleaner-auto-remove').on('change', (e) => {
-                Settings.data.autoRemove = e.target.checked;
-                Settings.save();
-                if (Settings.data.autoRemove) {
-                    Chat.cleanAllMessages(); // ทำความสะอาดทันทีเมื่อเปิดใช้งาน
-                }
-            });
-
-            $('#cleaner-btn-clean-now').on('click', () => {
-                Chat.cleanAllMessages();
-            });
-        }
-    };
-
-    // ==========================================
-    // 5. Initialization
-    // ==========================================
-    function getContext() {
-        return typeof SillyTavern !== 'undefined' && SillyTavern.getContext ? SillyTavern.getContext() : null;
+        $('#cz_btn_clean').on('click', function () {
+            cleanChatHistory();
+        });
     }
 
+    // 5. เริ่มต้นการทำงาน (Boot)
     jQuery(async () => {
-        Settings.load();
-        UI.inject();
+        const context = SillyTavern.getContext();
+        loadSettings();
+        buildUI();
 
-        const context = getContext();
-        if (context && context.eventSource) {
-            // ดักจับเมื่อ AI ตอบเสร็จ หรือเมื่อโหลดข้อความใหม่
-            context.eventSource.on(context.event_types.MESSAGE_RECEIVED, () => Chat.handleAutoRemove());
-            context.eventSource.on(context.event_types.USER_MESSAGE_SENT, () => Chat.handleAutoRemove());
-            context.eventSource.on(context.event_types.MESSAGE_UPDATED, () => Chat.handleAutoRemove());
+        // ดักจับเมื่อ AI ตอบข้อความเสร็จสิ้น
+        if (context.eventSource) {
+            context.eventSource.on(context.event_types.MESSAGE_RECEIVED, () => {
+                if (!settings.autoRemove) return;
+                
+                // เช็คข้อความล่าสุดเท่านั้นเพื่อไม่ให้หน่วง
+                const lastMsgIndex = context.chat.length - 1;
+                const lastMsg = context.chat[lastMsgIndex];
+                
+                if (lastMsg && lastMsg.mes) {
+                    const newText = processText(lastMsg.mes);
+                    if (newText !== lastMsg.mes) {
+                        lastMsg.mes = newText;
+                        context.saveChat();
+                        context.eventSource.emit(context.event_types.CHAT_CHANGED);
+                    }
+                }
+            });
         }
     });
 
