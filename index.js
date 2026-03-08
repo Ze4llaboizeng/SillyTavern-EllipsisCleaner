@@ -5,90 +5,90 @@ import { updateMessageBlock, saveChat } from "../../../../chat.js";
 
 const extensionName = "st-text-cleaner";
 
-// ค่าเริ่มต้น: เปิดใช้งานอัตโนมัติ
-const defaultSettings = {
-    autoRemove: true
-};
-
+// สร้างค่าเริ่มต้นถ้ายังไม่มี
 if (!extension_settings[extensionName]) {
-    extension_settings[extensionName] = defaultSettings;
+    extension_settings[extensionName] = { autoRemove: true };
 }
 
 function cleanText(text) {
     if (!text) return text;
 
-    // 1. ลบจุด (.) ยกเว้นใน <think>...</think>
-    // regex จับ <think>...</think> ไว้ใน group 1 ถ้าเจอจะข้ามไป ถ้าเจอ . นอกแท็ก จะลบทิ้ง
-    text = text.replace(/(<think>[\s\S]*?<\/think>)|(\.)/gi, (match, p1) => {
-        if (p1) return p1; // คืนค่า <think>... กลับไปเหมือนเดิม
-        return ''; // ลบจุด
-    });
+    // 1. ลบคำแปลภาษาอังกฤษในวงเล็บที่ตามหลังภาษาไทย 
+    // ตรวจจับ: ภาษาไทย + เว้นวรรค(หรือไม่เว้น) + (วงเล็บที่มีภาษาอังกฤษข้างใน)
+    text = text.replace(/([ก-๙]+)\s*\([^)]*[a-zA-Z][^)]*\)/g, '$1');
 
-    // 2. ลบคำที่เป็น ไทย(English)
-    // จับคู่ภาษาไทย ตามด้วยวงเล็บที่มีภาษาอังกฤษข้างใน แล้วแทนที่ด้วยคำไทยคำแรก
-    text = text.replace(/([ก-๙]+)\s*\([A-Za-z0-9\s\-_.,'"]+\)/g, '$1');
+    // 2. ลบจุด (.) ยกเว้นในแท็ก <think>...</think>
+    // ใช้วิธีแยกส่วนข้อความด้วยแท็ก <think> แล้วลบจุดเฉพาะส่วนที่ไม่ใช่ <think>
+    const parts = text.split(/(<think>[\s\S]*?<\/think>)/gi);
+    for (let i = 0; i < parts.length; i++) {
+        // ถ้าส่วนนี้ไม่ได้ขึ้นต้นด้วย <think> ให้ลบจุดออกทั้งหมด
+        if (!parts[i].toLowerCase().startsWith('<think>')) {
+            parts[i] = parts[i].replace(/\./g, '');
+        }
+    }
+    text = parts.join('');
 
     return text;
 }
 
 function processMessage(messageId) {
-    // ถ้าปิดสวิตช์ไว้ ให้ข้ามไปไม่ต้องทำอะไร
+    // เช็คสวิตช์ ถ้าปิดไว้ก็ข้ามไป
     if (!extension_settings[extensionName].autoRemove) return;
 
     const context = getContext();
     const chat = context.chat;
     const msg = chat[messageId];
 
-    // ตรวจสอบว่าเป็นข้อความจากบอท (ไม่ใช่จาก user)
+    // ต้องเป็นข้อความของบอทเท่านั้น
     if (msg && !msg.is_user) {
         const originalText = msg.mes;
         const cleanedText = cleanText(originalText);
 
-        // ถ้าข้อความมีการเปลี่ยนแปลง (ลบจุด หรือลบคำสำเร็จ)
+        // ถ้ามีจุดหรือคำถูกลบไป ให้เซฟแชทและอัปเดตหน้าจอ
         if (originalText !== cleanedText) {
             msg.mes = cleanedText;
-            saveChat(); // เซฟแชท
-            updateMessageBlock(messageId, msg); // รีเฟรชหน้าต่างแชทให้ข้อความเปลี่ยนทันที
+            saveChat();
+            updateMessageBlock(messageId, msg);
         }
     }
 }
 
-async function setupUI() {
-    // โครงสร้าง HTML สำหรับเมนูตั้งค่า
+jQuery(async () => {
+    // โครงสร้างเมนู UI แบบมาตรฐานของ SillyTavern (Inline Drawer)
     const html = `
-        <div class="text-cleaner-settings">
-            <div class="cleaner-header">
-                <span>🧹 Thai Text & Dot Cleaner</span>
+        <div class="inline-drawer" id="st-text-cleaner-drawer">
+            <div class="inline-drawer-toggle inline-drawer-header">
+                <b>🧹 Thai Text & Dot Cleaner</b>
+                <div class="inline-drawer-icon fa-solid fa-circle-chevron-down down"></div>
             </div>
-            <div class="cleaner-content">
-                <label class="checkbox_label">
-                    <input type="checkbox" id="tc_auto_remove" ${extension_settings[extensionName].autoRemove ? 'checked' : ''}>
-                    <span>เปิดใช้งาน Auto Remove อัตโนมัติ</span>
-                </label>
-                <div class="cleaner-desc">
-                    <strong>การทำงาน:</strong><br>
-                    • ลบจุด (.) ทั้งหมด ยกเว้นข้อความในแท็ก &lt;think&gt;...&lt;/think&gt;<br>
-                    • ลบวงเล็บภาษาอังกฤษที่ตามหลังภาษาไทย เช่น "แอปเปิ้ล(Apple)" จะเหลือแค่ "แอปเปิ้ล"
+            <div class="inline-drawer-content" style="display: none;">
+                <div class="text-cleaner-container">
+                    <label class="checkbox_label">
+                        <input type="checkbox" id="tc_auto_remove" ${extension_settings[extensionName].autoRemove ? 'checked' : ''}>
+                        <span>เปิดใช้งาน Auto Remove ทันทีที่บอทตอบ</span>
+                    </label>
+                    <div class="tc-note">
+                        <strong>ระบบจะทำการ:</strong><br>
+                        1. ลบจุด (.) ทั้งหมด ยกเว้นในแท็ก <code>&lt;think&gt;...&lt;/think&gt;</code><br>
+                        2. ลบวงเล็บ (English) ที่ตามหลังภาษาไทย เช่น <i>แอปเปิ้ล(Apple)</i> &rarr; <i>แอปเปิ้ล</i>
+                    </div>
                 </div>
             </div>
         </div>
     `;
 
-    // นำไปใส่ในหน้าต่าง Extensions (เมนูรูปจิ๊กซอว์)
+    // ยัด HTML ใส่หน้าต่างตั้งค่า Extensions (เมนูจิ๊กซอว์)
     $("#extensions_settings").append(html);
 
-    // บันทึกการตั้งค่าเมื่อผู้ใช้กดติ๊กเปิด/ปิดสวิตช์
+    // ทำงานเมื่อกดสวิตช์เปิด/ปิด
     $("#tc_auto_remove").on("change", function() {
         extension_settings[extensionName].autoRemove = !!$(this).prop("checked");
         saveSettingsDebounced();
     });
-}
 
-jQuery(async () => {
-    await setupUI();
-    
-    // ดักจับ Event เมื่อมีข้อความใหม่ตอบกลับมา
+    // ดักจับการทำงานเมื่อบอทตอบกลับ
     eventSource.on(event_types.MESSAGE_RECEIVED, processMessage);
-    // ดักจับ Event เมื่อผู้ใช้กด Swipe ปัดขวาหาข้อความใหม่ หรือทำการแก้ไขข้อความ (Edit)
     eventSource.on(event_types.MESSAGE_UPDATED, processMessage);
+    
+    console.log("[Text Cleaner] Extension Loaded and UI Injected!");
 });
