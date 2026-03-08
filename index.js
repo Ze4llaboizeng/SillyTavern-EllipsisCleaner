@@ -50,12 +50,12 @@
                 };
                 mask(/```[\s\S]*?```/g);
                 mask(/`[^`]*`/g);
-                mask(/<script\b[^>]*>[\s\S]*?<\/script>/gi);
-                mask(/<style\b[^>]*>[\s\S]*?<\/style>/gi);
-                mask(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi);
-                mask(/<code\b[^>]*>[\s\S]*?<\/code>/gi);
-                // เพิ่มการปกป้องแท็ก <think> ทั้งบล็อก
-                mask(/<think\b[^>]*>[\s\S]*?<\/think>/gi);
+                mask(/<script\b[^>]*>[\s\S]*?(?:<\/script>|$)/gi);
+                mask(/<style\b[^>]*>[\s\S]*?(?:<\/style>|$)/gi);
+                mask(/<pre\b[^>]*>[\s\S]*?(?:<\/pre>|$)/gi);
+                mask(/<code\b[^>]*>[\s\S]*?(?:<\/code>|$)/gi);
+                mask(/<think\b[^>]*>[\s\S]*?(?:<\/think>|$)/gi);
+                
                 mask(/<[^>]+>/g);
             }
 
@@ -153,7 +153,9 @@
                         let tn;
                         while (tn = walker.nextNode()) {
                             const parent = tn.parentNode;
-                            if (settings.protectCode && ['CODE', 'PRE', 'SCRIPT', 'STYLE', 'THINK'].includes(parent.nodeName)) continue;
+                            // ใช้ .closest() แทน .nodeName เพื่อป้องกันกรณีที่มี Tag ย่อย (เช่น <span>, <p>) ซ้อนอยู่ใน <think> หรือ <pre>
+                            if (settings.protectCode && parent.closest && parent.closest('code, pre, script, style, think')) continue;
+                            
                             const original = tn.nodeValue;
                             const res = Cleaner.cleanText(original, settings);
                             if (res.removed > 0) tn.nodeValue = res.text;
