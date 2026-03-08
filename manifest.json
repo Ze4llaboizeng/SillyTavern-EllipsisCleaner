@@ -1,8 +1,8 @@
 {
-  "display_name": "Remove Ellipsis",
-  "version": "1.0.3",
+  "display_name": "Ellipsis Cleaner 🧹",
+  "version": "2.0.0",
   "author": "Zealllll",
-  "description": "ลบ .../… จากข้อความของทั้งผู้ใช้และ AI พร้อมโหมดลบอัตโนมัติ",
+  "description": "ลบจุดไข่ปลา (...) ทั้งในและนอก HTML อย่างฉลาด พร้อมระบบปกป้องแท็ก <think> และโหมด Auto Remove",
   "js": "index.js",
   "css": "style.css",
   "loading_order": 60,
