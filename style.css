@@ -10,6 +10,7 @@
 .text-cleaner-container .checkbox_label {
     font-weight: bold;
     color: var(--SmartThemeBodyColor, #ffffff);
+    cursor: pointer;
 }
 
 .text-cleaner-container .tc-note {
