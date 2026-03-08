@@ -1,8 +1,11 @@
 {
     "name": "Text Cleaner",
     "display_name": "Thai Text & Dot Cleaner",
-    "description": "ลบจุด (.) และคำแปลภาษาอังกฤษในวงเล็บหลังภาษาไทย โดยละเว้นแท็ก <think>",
-    "version": "1.0.0",
+    "description": "ลบจุด (.) และวงเล็บภาษาอังกฤษหลังภาษาไทย โดยละเว้นแท็ก <think>",
+    "version": "1.0.2",
     "author": "User",
-    "main": "index.js"
+    "main": "index.js",
+    "css": [
+        "style.css"
+    ]
 }
