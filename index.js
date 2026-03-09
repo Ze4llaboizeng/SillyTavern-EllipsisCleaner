@@ -140,7 +140,7 @@
             // Check setting before showing toast
             if (!Core.getSettings().notifications) return; 
 
-            if (typeof toastr !== 'undefined' && toastr[type]) toastr[type](msg, 'Ellipsis Cleaner2');
+            if (typeof toastr !== 'undefined' && toastr[type]) toastr[type](msg, 'Ellipsis Cleaner');
             else console.log(`[EllipsisCleaner] ${msg}`);
         },
 
