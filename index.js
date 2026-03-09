@@ -1,4 +1,4 @@
-/* Remove Ellipsis — Added Notification Toggle */
+/* Remove Ellipsis — Added Notification Toggle & Thai-English Bracket Removal */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -11,9 +11,11 @@
     const DEFAULTS = { 
         autoRemove: false, 
         removeAllDots: false, 
+        treatTwoDots: false,
         preserveSpace: true,
         protectCode: true,
-        notifications: true // New default
+        notifications: true,
+        removeEngParens: false // ฟังก์ชันใหม่: ลบวงเล็บภาษาอังกฤษหลังคำไทย
     };
 
     // ========================================================================
@@ -49,31 +51,37 @@
 
             const protectedItems = [];
             let processed = text;
+            let removedCount = 0;
 
+            // --- PROTECT CODE BLOCKS ---
             if (settings.protectCode) {
                 const mask = (regex) => {
                     processed = processed.replace(regex, m => `@@PT${protectedItems.push(m) - 1}@@`);
                 };
 
-                // 1. Markdown
                 mask(/```[\s\S]*?```/g);
                 mask(/`[^`]*`/g);
-
-                // 2. Technical Blocks
                 mask(/<script\b[^>]*>[\s\S]*?<\/script>/gi);
                 mask(/<style\b[^>]*>[\s\S]*?<\/style>/gi);
                 mask(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi);
                 mask(/<code\b[^>]*>[\s\S]*?<\/code>/gi);
-
-                // 3. Structural Blocks
-                //mask(/<p\b[^>]*>[\s\S]*?<\/p>/gi);
-                //mask(/<div\b[^>]*>[\s\S]*?<\/div>/gi);
-                //mask(/<span\b[^>]*>[\s\S]*?<\/span>/gi);
-
-                // 4. Attributes
                 mask(/<[^>]+>/g);
             }
 
+            // --- 1. REMOVE ENGLISH PARENTHESES AFTER THAI ---
+            if (settings.removeEngParens) {
+                // อธิบาย Regex: 
+                // (?<=[\u0E00-\u0E7F]) = ต้องตามหลังตัวอักษรไทย
+                // \s* = มีหรือไม่มีเว้นวรรคก็ได้
+                // \([0-9\s\-\.,'_]*[A-Za-z][A-Za-z0-9\s\-\.,'_]*\) = เป็นวงเล็บที่ข้างในต้องมีภาษาอังกฤษอย่างน้อย 1 ตัว (เพื่อไม่ให้ลบวงเล็บตัวเลขล้วน)
+                const engParenRegex = /(?<=[\u0E00-\u0E7F])\s*\([0-9\s\-\.,'_]*[A-Za-z][A-Za-z0-9\s\-\.,'_]*\)/g;
+                processed = processed.replace(engParenRegex, (match) => {
+                    removedCount += match.length;
+                    return ''; // ลบทิ้งทั้งหมดรวมถึงช่องว่างก่อนหน้าวงเล็บ
+                });
+            }
+
+            // --- 2. REMOVE ELLIPSIS ---
             let patternSource;
             if (settings.removeAllDots) {
                 patternSource = "\\.+|…";
@@ -85,7 +93,6 @@
             const specialAfter = new RegExp(`(?:${patternSource})[ \t]*(?=[*"'])`, 'g');
             const specialBefore = new RegExp(`(?<=[*"'])(?:${patternSource})[ \t]*`, 'g');
             
-            let removedCount = 0;
             processed = processed
                 .replace(specialBefore, m => { removedCount += m.length; return ''; })
                 .replace(specialAfter, m => { removedCount += m.length; return ''; });
@@ -103,6 +110,7 @@
                 return ' '; 
             });
 
+            // --- UNPROTECT CODE BLOCKS ---
             if (settings.protectCode) {
                 processed = processed.replace(/@@PT(\d+)@@/g, (_, i) => protectedItems[i]);
             }
@@ -137,11 +145,9 @@
     // ========================================================================
     const UI = {
         notify(msg, type = 'info') {
-            // Check setting before showing toast
             if (!Core.getSettings().notifications) return; 
-
-            if (typeof toastr !== 'undefined' && toastr[type]) toastr[type](msg, 'Ellipsis Cleaner');
-            else console.log(`[EllipsisCleaner] ${msg}`);
+            if (typeof toastr !== 'undefined' && toastr[type]) toastr[type](msg, 'Cleaner Ext');
+            else console.log(`[CleanerExt] ${msg}`);
         },
 
         closeDrawer() {
@@ -206,8 +212,8 @@
             ctx.chat.forEach(msg => count += Cleaner.cleanMessage(msg));
             await UI.refreshChat(true); 
             
-            if (count > 0) UI.notify(`Removed ${count} dots.`, 'success');
-            else UI.notify('No dots found (or protected).', 'info');
+            if (count > 0) UI.notify(`Removed ${count} elements.`, 'success');
+            else UI.notify('No elements found (or protected).', 'info');
         },
 
         async checkAll() {
@@ -218,15 +224,13 @@
             ctx.chat.forEach(msg => {
                 if (typeof msg.mes === 'string') count += Cleaner.cleanText(msg.mes, st).removed;
             });
-            // Force notification for manual check even if disabled globally
-            if (st.notifications) UI.notify(count > 0 ? `Found ${count} dots.` : 'No dots found.', 'info');
-            else if (typeof toastr !== 'undefined') toastr.info(count > 0 ? `Found ${count} dots.` : 'No dots found.', 'Check Result');
+            if (st.notifications) UI.notify(count > 0 ? `Found ${count} elements.` : 'No elements found.', 'info');
+            else if (typeof toastr !== 'undefined') toastr.info(count > 0 ? `Found ${count} elements.` : 'No elements found.', 'Check Result');
         },
 
         injectSettings() {
             if (typeof $ === 'undefined') return;
             
-            // ใช้ ID ตรวจสอบแทน Class และใช้โครงสร้างมาตรฐานของ ST
             if ($('#remove-ellipsis-settings').length > 0) return;
             const container = $('#extensions_settings');
             if (!container.length) return;
@@ -237,7 +241,7 @@
                 <div id="remove-ellipsis-settings" class="extension_settings_block">
                     <div class="inline-drawer">
                         <div class="inline-drawer-toggle inline-drawer-header">
-                            <b><i class="fa-solid fa-comment-dots"></i> Ellipsis Cleaner2</b>
+                            <b><i class="fa-solid fa-broom"></i> Text Cleaner Ext</b>
                             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
                         </div>
                         <div class="inline-drawer-content" style="display:none;">
@@ -249,6 +253,15 @@
                                 <span>Auto Remove</span>
                             </label>
 
+                            <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
+
+                            <label class="checkbox_label" title="ลบวงเล็บภาษาอังกฤษที่ตามหลังภาษาไทย เช่น แชท(chat) ให้เหลือแค่ แชท">
+                                <input type="checkbox" id="rm-ell-engparens" ${st.removeEngParens ? 'checked' : ''} />
+                                <span><b>Remove English in ( )</b></span>
+                            </label>
+
+                            <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
+
                             <label class="checkbox_label" title="อันตราย: ตัวเลือกนี้จะลบจุด (.) ทุกตัวในข้อความ!">
                                 <input type="checkbox" id="rm-ell-all" ${st.removeAllDots ? 'checked' : ''} />
                                 <span>Remove ALL Dots (.)</span>
@@ -258,6 +271,8 @@
                                 <input type="checkbox" id="rm-ell-twodots" ${st.treatTwoDots ? 'checked' : ''} />
                                 <span>Remove ".."</span>
                             </label>
+
+                            <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
                             
                             <label class="checkbox_label">
                                 <input type="checkbox" id="rm-ell-protect" ${st.protectCode !== false ? 'checked' : ''} />
@@ -269,16 +284,16 @@
                                 <span>Preserve Space</span>
                             </label>
 
-                            <label class="checkbox_label" title="แสดงแจ้งเตือนเมื่อทำการลบจุด">
+                            <label class="checkbox_label" title="แสดงแจ้งเตือนเมื่อทำการลบจุดหรือวงเล็บ">
                                 <input type="checkbox" id="rm-ell-notify" ${st.notifications !== false ? 'checked' : ''} />
                                 <span>Show Notifications</span>
                             </label>
 
                             <div style="display: flex; gap: 10px; margin-top: 15px;">
-                                <div id="rm-ell-btn-clean" class="menu_button" style="flex: 1;" title="ลบจุดไข่ปลาในแชทปัจจุบันทันที">
+                                <div id="rm-ell-btn-clean" class="menu_button" style="flex: 1;" title="ลบสิ่งสกปรกในแชทปัจจุบันทันที">
                                     <i class="fa-solid fa-broom"></i> Clean Now
                                 </div>
-                                <div id="rm-ell-btn-check" class="menu_button" style="flex: 1;" title="ตรวจสอบว่ามีจุดไข่ปลาอยู่กี่จุด">
+                                <div id="rm-ell-btn-check" class="menu_button" style="flex: 1;" title="ตรวจสอบจำนวนที่ต้องลบ">
                                     <i class="fa-solid fa-magnifying-glass"></i> Check
                                 </div>
                             </div>
@@ -293,9 +308,6 @@
             if (this._eventsBound) return;
             this._eventsBound = true;
 
-            // เอา Event จัดการ Drawer Toggle แบบกำหนดเองออก เพื่อให้ Core ของ SillyTavern เข้ามาทำงานแทน
-            // ซึ่งจะแก้ปัญหาบัคหน้าต่างเปิดแล้วปิดเองทันที
-
             const updateSetting = (key, val) => {
                 Core.getSettings()[key] = val;
                 Core.saveSettings();
@@ -304,6 +316,10 @@
             $(document).on('change', '#rm-ell-auto', (e) => {
                 updateSetting('autoRemove', e.target.checked);
                 UI.notify(`Auto Remove: ${e.target.checked ? 'ON' : 'OFF'}`);
+            });
+            $(document).on('change', '#rm-ell-engparens', (e) => { // ผูก Event ใหม่
+                updateSetting('removeEngParens', e.target.checked);
+                UI.notify(`Remove English in ( ): ${e.target.checked ? 'ON' : 'OFF'}`);
             });
             $(document).on('change', '#rm-ell-all', (e) => {
                 updateSetting('removeAllDots', e.target.checked);
@@ -316,13 +332,11 @@
                 UI.notify(`Code Protection: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
             
-            // Notification Toggle Event
             $(document).on('change', '#rm-ell-notify', (e) => {
                 updateSetting('notifications', e.target.checked);
                 if(e.target.checked) UI.notify('Notifications Enabled', 'success');
             });
 
-            // Adjusted click listener to work with div buttons
             $(document).on('click', '#rm-ell-btn-clean', async (e) => {
                 e.preventDefault();
                 UI.closeDrawer();
