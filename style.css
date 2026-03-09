@@ -1,67 +1,8 @@
-/* Remove Ellipsis - Extension Styling (Standard) */
+/* Remove Ellipsis - Extension Styling (Native SillyTavern Theme) */
+/* ลบการตกแต่งทิ้งทั้งหมด เพื่อให้ใช้ CSS หลักของ SillyTavern ได้อย่างสมบูรณ์ */
 
-.remove-ellipsis-settings {
+#remove-ellipsis-settings {
     width: 100%;
     margin-top: 10px;
     margin-bottom: 10px;
-}
-
-.remove-ellipsis-settings * { 
-    box-sizing: border-box; 
-}
-
-/* ปรับขนาดตัวอักษรหัว Extension ให้เท่ากับเมนูมาตรฐานของ SillyTavern */
-.remove-ellipsis-settings .inline-drawer-header {
-    font-size: 1em;
-}
-
-.remove-ellipsis-settings .inline-drawer-header b {
-    font-weight: 600; /* ความหนามาตรฐานของ ST */
-}
-
-/* เอาพื้นหลังและกรอบออกทั้งหมด ให้กลืนไปกับเมนูอื่นๆ */
-.remove-ellipsis-settings .inline-drawer-content {
-    padding: 10px;
-}
-
-/* ข้อความเครดิต */
-.remove-ellipsis-settings .styled_description_block {
-    font-size: 0.85em;
-    text-align: center;
-    margin-bottom: 12px;
-    opacity: 0.7;
-}
-
-/* จัดระยะห่าง Checkbox ให้พอดี */
-.remove-ellipsis-settings .checkbox_label {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin-bottom: 8px;
-    cursor: pointer;
-}
-
-.remove-ellipsis-settings .checkbox_label input[type="checkbox"] {
-    margin: 0;
-    cursor: pointer;
-}
-
-/* ปุ่ม Action พื้นฐาน */
-.remove-ellipsis-settings .menu_button {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px;
-    border-radius: 4px;
-    font-size: 0.9em;
-    font-weight: 600;
-    cursor: pointer;
-    color: #fff;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    transition: filter 0.2s;
-}
-
-.remove-ellipsis-settings .menu_button:hover {
-    filter: brightness(1.2);
 }
