@@ -225,94 +225,78 @@
 
         injectSettings() {
             if (typeof $ === 'undefined') return;
+            
+            // ใช้โครงสร้างแบบเดียวกับ HTML Healer เพื่อป้องกันบัค
+            if ($('.remove-ellipsis-settings').length > 0) return;
             const container = $('#extensions_settings');
-            if (!container.length || $('#remove-ellipsis-settings').length) return;
+            if (!container.length) return;
 
-            // Updated HTML to match standard SillyTavern UI (based on provided example)
-            const html = `
-            <div id="remove-ellipsis-settings" class="extension_settings_block">
-                <div class="inline-drawer">
-                    <div class="inline-drawer-toggle inline-drawer-header">
-                        <b><i class="fa-solid fa-comment-dots" style="color: var(--smart-theme-color, #a5b4fc);"></i> Ellipsis Cleaner</b>
-                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
-                    </div>
-                    <div class="inline-drawer-content" style="display:none;">
-                        
-                        <div class="styled_description_block">Editor by Zealllll</div>
-                        
-                        <div style="display: flex; flex-direction: column; padding: 5px 10px;">
-                            <label class="checkbox_label">
-                                <input type="checkbox" id="rm-ell-auto" />
-                                <span>Auto Remove</span>
-                            </label>
-
-                            <label class="checkbox_label" title="อันตราย: ตัวเลือกนี้จะลบจุด (.) ทุกตัวในข้อความ!">
-                                <input type="checkbox" id="rm-ell-all" />
-                                <span style="color: #ffaaaa;">Remove ALL Dots (.)</span>
-                            </label>
-                            
-                            <label class="checkbox_label">
-                                <input type="checkbox" id="rm-ell-twodots" />
-                                <span>Remove ".."</span>
-                            </label>
-                            
-                            <label class="checkbox_label">
-                                <input type="checkbox" id="rm-ell-protect" />
-                                <span>Protect Code & HTML</span>
-                            </label>
-
-                            <label class="checkbox_label">
-                                <input type="checkbox" id="rm-ell-space" />
-                                <span>Preserve Space</span>
-                            </label>
-
-                            <label class="checkbox_label" title="แสดงแจ้งเตือนเมื่อทำการลบจุด">
-                                <input type="checkbox" id="rm-ell-notify" />
-                                <span>Show Notifications</span>
-                            </label>
-                        </div>
-
-                        <div style="display:flex; gap:5px; margin-top:5px;">
-                            <div id="rm-ell-btn-clean" class="menu_button" style="flex:1; background-color: var(--smart-theme-color, #4caf50);" title="ลบจุดไข่ปลาในแชทปัจจุบันทันที">
-                                <i class="fa-solid fa-broom"></i> Clean Now
-                            </div>
-                            <div id="rm-ell-btn-check" class="menu_button" style="flex:1; background-color: #2196f3;" title="ตรวจสอบว่ามีจุดไข่ปลาอยู่กี่จุด">
-                                <i class="fa-solid fa-magnifying-glass"></i> Check
-                            </div>
-                        </div>
-
-                    </div>
-                </div>
-            </div>`;
-
-            container.append(html);
             const st = Core.getSettings();
 
-            $('#rm-ell-auto').prop('checked', st.autoRemove);
-            $('#rm-ell-all').prop('checked', st.removeAllDots);
-            $('#rm-ell-twodots').prop('checked', st.treatTwoDots);
-            $('#rm-ell-space').prop('checked', st.preserveSpace);
-            $('#rm-ell-protect').prop('checked', st.protectCode !== false);
-            $('#rm-ell-notify').prop('checked', st.notifications !== false);
+            container.append(`
+                <div class="remove-ellipsis-settings">
+                    <div class="inline-drawer">
+                        <div class="inline-drawer-toggle inline-drawer-header">
+                            <b><i class="fa-solid fa-comment-dots" style="color: var(--smart-theme-color, #a5b4fc);"></i> Ellipsis Cleaner</b>
+                            <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
+                        </div>
+                        <div class="inline-drawer-content" style="display:none;">
+                            
+                            <div class="styled_description_block">Editor by Zealllll</div>
+                            
+                            <div style="display: flex; flex-direction: column; padding: 5px 10px;">
+                                <label class="checkbox_label">
+                                    <input type="checkbox" id="rm-ell-auto" ${st.autoRemove ? 'checked' : ''} />
+                                    <span>Auto Remove</span>
+                                </label>
+
+                                <label class="checkbox_label" title="อันตราย: ตัวเลือกนี้จะลบจุด (.) ทุกตัวในข้อความ!">
+                                    <input type="checkbox" id="rm-ell-all" ${st.removeAllDots ? 'checked' : ''} />
+                                    <span style="color: #ffaaaa;">Remove ALL Dots (.)</span>
+                                </label>
+                                
+                                <label class="checkbox_label">
+                                    <input type="checkbox" id="rm-ell-twodots" ${st.treatTwoDots ? 'checked' : ''} />
+                                    <span>Remove ".."</span>
+                                </label>
+                                
+                                <label class="checkbox_label">
+                                    <input type="checkbox" id="rm-ell-protect" ${st.protectCode !== false ? 'checked' : ''} />
+                                    <span>Protect Code & HTML</span>
+                                </label>
+
+                                <label class="checkbox_label">
+                                    <input type="checkbox" id="rm-ell-space" ${st.preserveSpace ? 'checked' : ''} />
+                                    <span>Preserve Space</span>
+                                </label>
+
+                                <label class="checkbox_label" title="แสดงแจ้งเตือนเมื่อทำการลบจุด">
+                                    <input type="checkbox" id="rm-ell-notify" ${st.notifications !== false ? 'checked' : ''} />
+                                    <span>Show Notifications</span>
+                                </label>
+                            </div>
+
+                            <div style="display:flex; gap:5px; margin-top:5px;">
+                                <div id="rm-ell-btn-clean" class="menu_button" style="flex:1; background-color: var(--smart-theme-color, #4caf50);" title="ลบจุดไข่ปลาในแชทปัจจุบันทันที">
+                                    <i class="fa-solid fa-broom"></i> Clean Now
+                                </div>
+                                <div id="rm-ell-btn-check" class="menu_button" style="flex:1; background-color: #2196f3;" title="ตรวจสอบว่ามีจุดไข่ปลาอยู่กี่จุด">
+                                    <i class="fa-solid fa-magnifying-glass"></i> Check
+                                </div>
+                            </div>
+
+                        </div>
+                    </div>
+                </div>
+            `);
         },
 
         bindEvents() {
             if (this._eventsBound) return;
             this._eventsBound = true;
 
-            // Updated drawer toggle event logic to match ST structure
-            $(document).on('click', '#remove-ellipsis-settings .inline-drawer-toggle', function(e) {
-                e.preventDefault();
-                const content = $(this).siblings('.inline-drawer-content');
-                const icon = $(this).find('.inline-drawer-icon');
-                if (content.is(':visible')) {
-                    content.slideUp(150);
-                    icon.removeClass('down');
-                } else {
-                    content.slideDown(150);
-                    icon.addClass('down');
-                }
-            });
+            // เอา Event จัดการ Drawer Toggle แบบกำหนดเองออก เพื่อให้ Core ของ SillyTavern เข้ามาทำงานแทน
+            // ซึ่งจะแก้ปัญหาบัคหน้าต่างเปิดแล้วปิดเองทันที
 
             const updateSetting = (key, val) => {
                 Core.getSettings()[key] = val;
