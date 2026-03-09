@@ -14,67 +14,7 @@
     transform: rotate(180deg);
 }
 
-/* Inner Settings Container */
-#remove-ellipsis-settings .rm-settings-container {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
-    padding: 10px;
-}
-
-/* Setting Items */
-#remove-ellipsis-settings .rm-setting-item {
-    margin: 0;
-    padding: 0;
-}
-
-/* Standardize checkbox alignment */
+/* Fix margin for checkbox labels inside our menu */
 #remove-ellipsis-settings .checkbox_label {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 0.875rem;
-    cursor: pointer;
-    margin: 0;
-    padding: 4px 0;
-    color: var(--SmartThemeBodyColor, #fff);
-}
-
-#remove-ellipsis-settings .checkbox_label input[type="checkbox"] {
-    margin: 0;
-    cursor: pointer;
-}
-
-/* Action Buttons Group */
-#remove-ellipsis-settings .rm-button-group {
-    display: flex;
-    gap: 10px;
-    margin-top: 10px;
-    padding-top: 10px;
-    border-top: 1px solid var(--SmartThemeBorderColor, rgba(255, 255, 255, 0.1));
-}
-
-/* Reset buttons to match standard ST .menu_button */
-#remove-ellipsis-settings .rm-btn {
-    flex: 1;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    padding: 8px;
-    background: var(--SmartThemeButtonColor, #444);
-    color: var(--SmartThemeBodyColor, #fff) !important;
-    border: 1px solid var(--SmartThemeBorderColor, #666);
-    border-radius: 4px; /* Standard ST button radius */
-    font-size: 0.9em;
-    font-weight: normal;
-    transition: filter 0.2s;
-    box-shadow: none;
-    cursor: pointer;
-}
-
-#remove-ellipsis-settings .rm-btn:hover {
-    filter: brightness(1.2);
-    transform: none;
-    box-shadow: none;
+    margin-bottom: 5px;
 }
