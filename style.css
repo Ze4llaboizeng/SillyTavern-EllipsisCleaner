@@ -1,13 +1,4 @@
-/* Remove Ellipsis - Extension Styling (Adapted from Healer Theme) */
-
-:root {
-    --ellipsis-bg: rgba(30, 27, 36, 0.7);
-    --ellipsis-border: rgba(166, 177, 225, 0.15);
-    --ellipsis-text-main: #f4f4f8;
-    --ellipsis-text-sub: #a6b1e1;
-    --ellipsis-accent: #90caf9;
-    --ellipsis-accent-hover: #64b5f6; 
-}
+/* Remove Ellipsis - Extension Styling (Standard) */
 
 .remove-ellipsis-settings {
     width: 100%;
@@ -19,43 +10,35 @@
     box-sizing: border-box; 
 }
 
-/* Apply Healer Box Aesthetic to Drawer Content */
-.remove-ellipsis-settings .inline-drawer-content {
-    background: var(--ellipsis-bg);
-    border: 1px solid var(--ellipsis-border);
-    border-radius: 12px;
-    padding: 12px;
-    margin-top: 6px;
-    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+/* ปรับขนาดตัวอักษรหัว Extension ให้เท่ากับเมนูมาตรฐานของ SillyTavern */
+.remove-ellipsis-settings .inline-drawer-header {
+    font-size: 1em;
 }
 
-/* Styled Description / Author block matching Healer */
+.remove-ellipsis-settings .inline-drawer-header b {
+    font-weight: 600; /* ความหนามาตรฐานของ ST */
+}
+
+/* เอาพื้นหลังและกรอบออกทั้งหมด ให้กลืนไปกับเมนูอื่นๆ */
+.remove-ellipsis-settings .inline-drawer-content {
+    padding: 10px;
+}
+
+/* ข้อความเครดิต */
 .remove-ellipsis-settings .styled_description_block {
-    color: var(--ellipsis-text-sub);
     font-size: 0.85em;
     text-align: center;
     margin-bottom: 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--ellipsis-border);
+    opacity: 0.7;
 }
 
-/* Checkbox list styling */
+/* จัดระยะห่าง Checkbox ให้พอดี */
 .remove-ellipsis-settings .checkbox_label {
     display: flex;
     align-items: center;
     gap: 10px;
-    margin-bottom: 6px;
-    padding: 6px 10px;
-    color: var(--ellipsis-text-main);
-    border-radius: 6px;
-    transition: background 0.2s ease, border 0.2s ease;
+    margin-bottom: 8px;
     cursor: pointer;
-    border: 1px solid transparent;
-}
-
-.remove-ellipsis-settings .checkbox_label:hover {
-    background: rgba(0, 0, 0, 0.2);
-    border-color: var(--ellipsis-border);
 }
 
 .remove-ellipsis-settings .checkbox_label input[type="checkbox"] {
@@ -63,17 +46,22 @@
     cursor: pointer;
 }
 
-/* Hover effect for action buttons inside the wrapper */
+/* ปุ่ม Action พื้นฐาน */
 .remove-ellipsis-settings .menu_button {
-    transition: filter 0.2s, transform 0.1s;
-    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 8px;
+    border-radius: 4px;
+    font-size: 0.9em;
     font-weight: 600;
+    cursor: pointer;
+    color: #fff;
     border: 1px solid rgba(255, 255, 255, 0.1);
-    color: var(--ellipsis-text-main);
+    transition: filter 0.2s;
 }
 
 .remove-ellipsis-settings .menu_button:hover {
-    filter: brightness(1.15);
-    transform: translateY(-1px);
-    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+    filter: brightness(1.2);
 }
