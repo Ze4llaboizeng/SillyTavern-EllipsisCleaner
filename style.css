@@ -9,18 +9,18 @@
     --ellipsis-accent-hover: #64b5f6; 
 }
 
-#remove-ellipsis-settings {
+.remove-ellipsis-settings {
     width: 100%;
     margin-top: 10px;
     margin-bottom: 10px;
 }
 
-#remove-ellipsis-settings * { 
+.remove-ellipsis-settings * { 
     box-sizing: border-box; 
 }
 
 /* Apply Healer Box Aesthetic to Drawer Content */
-#remove-ellipsis-settings .inline-drawer-content {
+.remove-ellipsis-settings .inline-drawer-content {
     background: var(--ellipsis-bg);
     border: 1px solid var(--ellipsis-border);
     border-radius: 12px;
@@ -30,7 +30,7 @@
 }
 
 /* Styled Description / Author block matching Healer */
-#remove-ellipsis-settings .styled_description_block {
+.remove-ellipsis-settings .styled_description_block {
     color: var(--ellipsis-text-sub);
     font-size: 0.85em;
     text-align: center;
@@ -40,7 +40,7 @@
 }
 
 /* Checkbox list styling */
-#remove-ellipsis-settings .checkbox_label {
+.remove-ellipsis-settings .checkbox_label {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -53,18 +53,18 @@
     border: 1px solid transparent;
 }
 
-#remove-ellipsis-settings .checkbox_label:hover {
+.remove-ellipsis-settings .checkbox_label:hover {
     background: rgba(0, 0, 0, 0.2);
     border-color: var(--ellipsis-border);
 }
 
-#remove-ellipsis-settings .checkbox_label input[type="checkbox"] {
+.remove-ellipsis-settings .checkbox_label input[type="checkbox"] {
     margin: 0;
     cursor: pointer;
 }
 
 /* Hover effect for action buttons inside the wrapper */
-#remove-ellipsis-settings .menu_button {
+.remove-ellipsis-settings .menu_button {
     transition: filter 0.2s, transform 0.1s;
     border-radius: 6px;
     font-weight: 600;
@@ -72,7 +72,7 @@
     color: var(--ellipsis-text-main);
 }
 
-#remove-ellipsis-settings .menu_button:hover {
+.remove-ellipsis-settings .menu_button:hover {
     filter: brightness(1.15);
     transform: translateY(-1px);
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
