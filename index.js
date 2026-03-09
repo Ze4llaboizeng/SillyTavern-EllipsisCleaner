@@ -1,4 +1,4 @@
-/* Remove Ellipsis — Added Notification Toggle & Thai-English Bracket Removal */
+/* Remove Ellipsis — Instant UI Update & Thai-English Bracket Removal */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -15,7 +15,7 @@
         preserveSpace: true,
         protectCode: true,
         notifications: true,
-        removeEngParens: false // ฟังก์ชันใหม่: ลบวงเล็บภาษาอังกฤษหลังคำไทย
+        removeEngParens: false 
     };
 
     // ========================================================================
@@ -70,14 +70,13 @@
 
             // --- 1. REMOVE ENGLISH PARENTHESES AFTER THAI ---
             if (settings.removeEngParens) {
-                // อธิบาย Regex: 
-                // (?<=[\u0E00-\u0E7F]) = ต้องตามหลังตัวอักษรไทย
-                // \s* = มีหรือไม่มีเว้นวรรคก็ได้
-                // \([0-9\s\-\.,'_]*[A-Za-z][A-Za-z0-9\s\-\.,'_]*\) = เป็นวงเล็บที่ข้างในต้องมีภาษาอังกฤษอย่างน้อย 1 ตัว (เพื่อไม่ให้ลบวงเล็บตัวเลขล้วน)
-                const engParenRegex = /(?<=[\u0E00-\u0E7F])\s*\([0-9\s\-\.,'_]*[A-Za-z][A-Za-z0-9\s\-\.,'_]*\)/g;
-                processed = processed.replace(engParenRegex, (match) => {
-                    removedCount += match.length;
-                    return ''; // ลบทิ้งทั้งหมดรวมถึงช่องว่างก่อนหน้าวงเล็บ
+                // อธิบาย Regex ใหม่:
+                // Group 1: จับตัวอักษรไทย รวมถึงสัญลักษณ์ตกแต่ง (เช่น *, _, ") ที่อาจคั่นอยู่
+                // Group 2: จับช่องว่าง(ถ้ามี) + วงเล็บที่มีภาษาอังกฤษข้างใน
+                const engParenRegex = /([\u0E00-\u0E7F][*_"']*)(\s*\([^)]*[A-Za-z][^)]*\))/g;
+                processed = processed.replace(engParenRegex, (match, g1, g2) => {
+                    removedCount += g2.length;
+                    return g1; // คืนค่าภาษาไทยกลับไป ลบเฉพาะ Group 2 (วงเล็บ) ทิ้ง
                 });
             }
 
@@ -122,20 +121,22 @@
             if (!msg) return 0;
             const settings = Core.getSettings();
             let total = 0;
-            if (msg.extra) {
-                ['display_text', 'original'].forEach(f => {
-                    if (typeof msg.extra[f] === 'string') {
-                        const r = this.cleanText(msg.extra[f], settings);
-                        msg.extra[f] = r.text;
-                        total += r.removed;
-                    }
-                });
-            }
+            
             if (typeof msg.mes === 'string') {
                 const r = this.cleanText(msg.mes, settings);
-                msg.mes = r.text;
-                total += r.removed;
+                if (r.removed > 0) {
+                    msg.mes = r.text;
+                    total += r.removed;
+                }
             }
+
+            if (msg.extra && typeof msg.extra.display_text === 'string') {
+                const r = this.cleanText(msg.extra.display_text, settings);
+                if (r.removed > 0) {
+                    msg.extra.display_text = r.text;
+                }
+            }
+            
             return total;
         }
     };
@@ -152,51 +153,6 @@
 
         closeDrawer() {
             if (typeof $ !== 'undefined') $('.drawer-overlay').trigger('click');
-        },
-
-        async refreshChat(forceVisualUpdate = false) {
-            const ctx = Core.getContext();
-            if (!ctx) return;
-
-            try {
-                if (typeof ctx.saveChat === 'function') await ctx.saveChat();
-                const nonce = Date.now();
-                if (Array.isArray(ctx.chat)) ctx.chat = ctx.chat.map(m => ({ ...m, _rmNonce: nonce }));
-                ctx.eventSource?.emit?.(ctx.event_types?.CHAT_CHANGED, { reason: 'rm-rebind' });
-                
-                if (typeof ctx.renderChat === 'function') await ctx.renderChat();
-
-                if (forceVisualUpdate && typeof document !== 'undefined') {
-                    const settings = Core.getSettings();
-                    const selector = '.mes_text, .message-text, .chat-message .mes';
-                    const nodes = document.querySelectorAll(selector);
-                    
-                    nodes.forEach(node => {
-                        const walker = document.createTreeWalker(node, NodeFilter.SHOW_TEXT, null);
-                        let tn;
-                        while (tn = walker.nextNode()) {
-                            const parent = tn.parentNode;
-                            const tagName = parent.nodeName;
-
-                            if (settings.protectCode) {
-                                if (['CODE', 'PRE', 'SCRIPT', 'STYLE'].includes(tagName)) continue;
-                                if (['P', 'DIV', 'SPAN'].includes(tagName)) {
-                                    const isRootContainer = parent.classList.contains('mes_text') || 
-                                                          parent.classList.contains('message-text') || 
-                                                          parent.classList.contains('mes');
-                                    if (!isRootContainer) continue; 
-                                }
-                            }
-
-                            const original = tn.nodeValue;
-                            const res = Cleaner.cleanText(original, settings);
-                            if (res.removed > 0) {
-                                tn.nodeValue = res.text;
-                            }
-                        }
-                    });
-                }
-            } catch (e) { console.warn('Refresh error:', e); }
         }
     };
 
@@ -204,16 +160,41 @@
     // MODULE: App
     // ========================================================================
     const App = {
-        async removeAll() {
+        async removeAll(silent = false) {
             const ctx = Core.getContext();
             if (!ctx?.chat) return;
             
             let count = 0;
-            ctx.chat.forEach(msg => count += Cleaner.cleanMessage(msg));
-            await UI.refreshChat(true); 
+            let updatedIndexes = [];
             
-            if (count > 0) UI.notify(`Removed ${count} elements.`, 'success');
-            else UI.notify('No elements found (or protected).', 'info');
+            // 1. วนเช็กและลบจุด/วงเล็บ ในข้อมูล Chat
+            ctx.chat.forEach((msg, index) => {
+                const removed = Cleaner.cleanMessage(msg);
+                if (removed > 0) {
+                    count += removed;
+                    updatedIndexes.push(index); // บันทึกตำแหน่งที่ถูกแก้ไข
+                }
+            });
+            
+            // 2. ถ้ามีการแก้ไข ให้ทำการบังคับรีเรนเดอร์ UI ทันที
+            if (updatedIndexes.length > 0) {
+                updatedIndexes.forEach(index => {
+                    // ใช้ฟังก์ชันหลักของ ST เพื่อเรนเดอร์กล่องข้อความที่มีการแก้ไขใหม่
+                    if (typeof window.updateMessageBlock === 'function') {
+                        window.updateMessageBlock(index, ctx.chat[index]);
+                    } else if (typeof ctx.updateMessageBlock === 'function') {
+                        ctx.updateMessageBlock(index, ctx.chat[index]);
+                    } else if (ctx.eventSource) {
+                        ctx.eventSource.emit(ctx.event_types.MESSAGE_UPDATED, index);
+                    }
+                });
+                if (typeof ctx.saveChat === 'function') await ctx.saveChat();
+            }
+            
+            if (!silent) {
+                if (count > 0) UI.notify(`Cleaned ${count} elements instantly.`, 'success');
+                else UI.notify('No elements found (or protected).', 'info');
+            }
         },
 
         async checkAll() {
@@ -224,8 +205,8 @@
             ctx.chat.forEach(msg => {
                 if (typeof msg.mes === 'string') count += Cleaner.cleanText(msg.mes, st).removed;
             });
-            if (st.notifications) UI.notify(count > 0 ? `Found ${count} elements.` : 'No elements found.', 'info');
-            else if (typeof toastr !== 'undefined') toastr.info(count > 0 ? `Found ${count} elements.` : 'No elements found.', 'Check Result');
+            if (st.notifications) UI.notify(count > 0 ? `Found ${count} elements to clean.` : 'All clean.', 'info');
+            else if (typeof toastr !== 'undefined') toastr.info(count > 0 ? `Found ${count} elements.` : 'All clean.', 'Check Result');
         },
 
         injectSettings() {
@@ -250,14 +231,14 @@
                             
                             <label class="checkbox_label">
                                 <input type="checkbox" id="rm-ell-auto" ${st.autoRemove ? 'checked' : ''} />
-                                <span>Auto Remove</span>
+                                <span>Auto Remove (After Generation)</span>
                             </label>
 
                             <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
 
                             <label class="checkbox_label" title="ลบวงเล็บภาษาอังกฤษที่ตามหลังภาษาไทย เช่น แชท(chat) ให้เหลือแค่ แชท">
                                 <input type="checkbox" id="rm-ell-engparens" ${st.removeEngParens ? 'checked' : ''} />
-                                <span><b>Remove English in ( )</b></span>
+                                <span style="color:var(--smart-blue);"><b>Remove English in ( )</b></span>
                             </label>
 
                             <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
@@ -291,7 +272,7 @@
 
                             <div style="display: flex; gap: 10px; margin-top: 15px;">
                                 <div id="rm-ell-btn-clean" class="menu_button" style="flex: 1;" title="ลบสิ่งสกปรกในแชทปัจจุบันทันที">
-                                    <i class="fa-solid fa-broom"></i> Clean Now
+                                    <i class="fa-solid fa-wand-magic-sparkles"></i> Clean Now
                                 </div>
                                 <div id="rm-ell-btn-check" class="menu_button" style="flex: 1;" title="ตรวจสอบจำนวนที่ต้องลบ">
                                     <i class="fa-solid fa-magnifying-glass"></i> Check
@@ -317,7 +298,7 @@
                 updateSetting('autoRemove', e.target.checked);
                 UI.notify(`Auto Remove: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
-            $(document).on('change', '#rm-ell-engparens', (e) => { // ผูก Event ใหม่
+            $(document).on('change', '#rm-ell-engparens', (e) => {
                 updateSetting('removeEngParens', e.target.checked);
                 UI.notify(`Remove English in ( ): ${e.target.checked ? 'ON' : 'OFF'}`);
             });
@@ -340,7 +321,7 @@
             $(document).on('click', '#rm-ell-btn-clean', async (e) => {
                 e.preventDefault();
                 UI.closeDrawer();
-                await App.removeAll();
+                await App.removeAll(); // ทำงานและอัปเดต UI ทันที
             });
             $(document).on('click', '#rm-ell-btn-check', async (e) => {
                 e.preventDefault();
@@ -353,14 +334,11 @@
             const ctx = Core.getContext();
             this.bindEvents(); 
             if (ctx?.eventSource) {
+                // อัปเดตเมื่อ AI สร้างข้อความเสร็จสมบูรณ์
                 ctx.eventSource.on(ctx.event_types.MESSAGE_RECEIVED, async () => {
-                    if (Core.getSettings().autoRemove) await App.removeAll();
+                    if (Core.getSettings().autoRemove) await App.removeAll(true);
                 });
             }
-            const form = document.querySelector('form.send-form, #send_form');
-            if (form) form.addEventListener('submit', () => {
-               if (Core.getSettings().autoRemove) setTimeout(() => App.removeAll(), 50);
-            }, true);
             this.injectSettings();
         }
     };
