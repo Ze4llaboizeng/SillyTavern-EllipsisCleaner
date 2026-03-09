@@ -237,7 +237,7 @@
                 <div id="remove-ellipsis-settings" class="extension_settings_block">
                     <div class="inline-drawer">
                         <div class="inline-drawer-toggle inline-drawer-header">
-                            <b><i class="fa-solid fa-comment-dots"></i> Ellipsis Cleaner</b>
+                            <b><i class="fa-solid fa-comment-dots"></i> Ellipsis Cleaner2</b>
                             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
                         </div>
                         <div class="inline-drawer-content" style="display:none;">
