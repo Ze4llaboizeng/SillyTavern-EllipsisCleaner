@@ -1,4 +1,4 @@
-/* Remove Ellipsis — UI Redesigned */
+/* Remove Ellipsis — Added Notification Toggle */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
@@ -13,7 +13,7 @@
         removeAllDots: false, 
         preserveSpace: true,
         protectCode: true,
-        notifications: true
+        notifications: true // New default
     };
 
     // ========================================================================
@@ -55,12 +55,22 @@
                     processed = processed.replace(regex, m => `@@PT${protectedItems.push(m) - 1}@@`);
                 };
 
+                // 1. Markdown
                 mask(/```[\s\S]*?```/g);
                 mask(/`[^`]*`/g);
+
+                // 2. Technical Blocks
                 mask(/<script\b[^>]*>[\s\S]*?<\/script>/gi);
                 mask(/<style\b[^>]*>[\s\S]*?<\/style>/gi);
                 mask(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi);
                 mask(/<code\b[^>]*>[\s\S]*?<\/code>/gi);
+
+                // 3. Structural Blocks
+                //mask(/<p\b[^>]*>[\s\S]*?<\/p>/gi);
+                //mask(/<div\b[^>]*>[\s\S]*?<\/div>/gi);
+                //mask(/<span\b[^>]*>[\s\S]*?<\/span>/gi);
+
+                // 4. Attributes
                 mask(/<[^>]+>/g);
             }
 
@@ -127,7 +137,9 @@
     // ========================================================================
     const UI = {
         notify(msg, type = 'info') {
+            // Check setting before showing toast
             if (!Core.getSettings().notifications) return; 
+
             if (typeof toastr !== 'undefined' && toastr[type]) toastr[type](msg, 'Ellipsis Cleaner');
             else console.log(`[EllipsisCleaner] ${msg}`);
         },
@@ -206,6 +218,7 @@
             ctx.chat.forEach(msg => {
                 if (typeof msg.mes === 'string') count += Cleaner.cleanText(msg.mes, st).removed;
             });
+            // Force notification for manual check even if disabled globally
             if (st.notifications) UI.notify(count > 0 ? `Found ${count} dots.` : 'No dots found.', 'info');
             else if (typeof toastr !== 'undefined') toastr.info(count > 0 ? `Found ${count} dots.` : 'No dots found.', 'Check Result');
         },
@@ -215,65 +228,57 @@
             const container = $('#extensions_settings');
             if (!container.length || $('#remove-ellipsis-settings').length) return;
 
-            // --- REDESIGNED UI HTML ---
+            // Updated HTML to match standard SillyTavern UI (based on provided example)
             const html = `
             <div id="remove-ellipsis-settings" class="extension_settings_block">
-                <div class="rm-settings-drawer">
-                    <div class="rm-settings-header" title="Click to open/close">
-                        <span class="rm-label"><i class="fa-solid fa-eraser"></i> Ellipsis Cleaner</span>
-                        <div class="rm-icon fa-solid fa-circle-chevron-down"></div>
+                <div class="inline-drawer">
+                    <div class="inline-drawer-toggle inline-drawer-header">
+                        <b><i class="fa-solid fa-comment-dots" style="color: var(--smart-theme-color, #a5b4fc);"></i> Ellipsis Cleaner</b>
+                        <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
                     </div>
-                    
-                    <div class="rm-settings-content" style="display:none;">
+                    <div class="inline-drawer-content" style="display:none;">
                         
-                        <!-- Operation Modes -->
-                        <div class="rm-section">
-                            <div class="rm-section-title"><i class="fa-solid fa-gears"></i> Operation (การทำงาน)</div>
+                        <div class="styled_description_block">Editor by Zealllll</div>
+                        
+                        <div style="display: flex; flex-direction: column; padding: 5px 10px;">
                             <label class="checkbox_label">
                                 <input type="checkbox" id="rm-ell-auto" />
-                                <span>Auto Remove (ลบอัตโนมัติ)</span>
+                                <span>Auto Remove</span>
+                            </label>
+
+                            <label class="checkbox_label" title="อันตราย: ตัวเลือกนี้จะลบจุด (.) ทุกตัวในข้อความ!">
+                                <input type="checkbox" id="rm-ell-all" />
+                                <span style="color: #ffaaaa;">Remove ALL Dots (.)</span>
                             </label>
                             
                             <label class="checkbox_label">
                                 <input type="checkbox" id="rm-ell-twodots" />
-                                <span>Remove ".." (ลบจุดคู่)</span>
+                                <span>Remove ".."</span>
                             </label>
                             
-                            <div class="rm-danger-zone" title="DANGER: Removes every single dot '.'">
-                                <label class="checkbox_label">
-                                    <input type="checkbox" id="rm-ell-all" />
-                                    <span><i class="fa-solid fa-triangle-exclamation"></i> Remove ALL Dots (.)</span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <!-- Options -->
-                        <div class="rm-section">
-                            <div class="rm-section-title"><i class="fa-solid fa-sliders"></i> Options (ตัวเลือก)</div>
                             <label class="checkbox_label">
                                 <input type="checkbox" id="rm-ell-protect" />
-                                <span>Protect Code & HTML (กันโค้ดพัง)</span>
+                                <span>Protect Code & HTML</span>
                             </label>
 
                             <label class="checkbox_label">
                                 <input type="checkbox" id="rm-ell-space" />
-                                <span>Preserve Space (คงช่องว่าง)</span>
+                                <span>Preserve Space</span>
                             </label>
 
-                            <label class="checkbox_label" title="Show toast notifications when cleaning">
+                            <label class="checkbox_label" title="แสดงแจ้งเตือนเมื่อทำการลบจุด">
                                 <input type="checkbox" id="rm-ell-notify" />
-                                <span>Notifications (แจ้งเตือน)</span>
+                                <span>Show Notifications</span>
                             </label>
                         </div>
 
-                        <!-- Action Buttons -->
-                        <div class="rm-actions">
-                            <button id="rm-ell-btn-clean" class="menu_button rm-btn-primary">
+                        <div style="display:flex; gap:5px; margin-top:5px;">
+                            <div id="rm-ell-btn-clean" class="menu_button" style="flex:1; background-color: var(--smart-theme-color, #4caf50);" title="ลบจุดไข่ปลาในแชทปัจจุบันทันที">
                                 <i class="fa-solid fa-broom"></i> Clean Now
-                            </button>
-                            <button id="rm-ell-btn-check" class="menu_button rm-btn-secondary">
+                            </div>
+                            <div id="rm-ell-btn-check" class="menu_button" style="flex:1; background-color: #2196f3;" title="ตรวจสอบว่ามีจุดไข่ปลาอยู่กี่จุด">
                                 <i class="fa-solid fa-magnifying-glass"></i> Check
-                            </button>
+                            </div>
                         </div>
 
                     </div>
@@ -295,15 +300,16 @@
             if (this._eventsBound) return;
             this._eventsBound = true;
 
-            $(document).on('click', '#remove-ellipsis-settings .rm-settings-header', function(e) {
+            // Updated drawer toggle event logic to match ST structure
+            $(document).on('click', '#remove-ellipsis-settings .inline-drawer-toggle', function(e) {
                 e.preventDefault();
-                const content = $(this).next('.rm-settings-content');
-                const icon = $(this).find('.rm-icon');
+                const content = $(this).siblings('.inline-drawer-content');
+                const icon = $(this).find('.inline-drawer-icon');
                 if (content.is(':visible')) {
-                    content.slideUp(200);
+                    content.slideUp(150);
                     icon.removeClass('down');
                 } else {
-                    content.slideDown(200);
+                    content.slideDown(150);
                     icon.addClass('down');
                 }
             });
@@ -328,11 +334,13 @@
                 UI.notify(`Code Protection: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
             
+            // Notification Toggle Event
             $(document).on('change', '#rm-ell-notify', (e) => {
                 updateSetting('notifications', e.target.checked);
                 if(e.target.checked) UI.notify('Notifications Enabled', 'success');
             });
 
+            // Adjusted click listener to work with div buttons
             $(document).on('click', '#rm-ell-btn-clean', async (e) => {
                 e.preventDefault();
                 UI.closeDrawer();
