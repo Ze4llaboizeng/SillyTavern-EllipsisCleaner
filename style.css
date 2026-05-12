@@ -37,14 +37,14 @@
     width: 100%;
 }
 
-.inline-drawer {
+#remove-ellipsis-settings .inline-drawer {
     border: 1px solid var(--grey-40, #c4c7cc);
     border-radius: 12px;
     overflow: hidden;
     background: var(--bg-main, #fff);
 }
 
-.inline-drawer-toggle {
+#remove-ellipsis-settings .inline-drawer-toggle {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -55,25 +55,25 @@
     user-select: none;
 }
 
-.inline-drawer-toggle b {
+#remove-ellipsis-settings .inline-drawer-toggle b {
     display: inline-flex;
     align-items: center;
     gap: 0.5rem;
 }
 
-.inline-drawer-icon {
+#remove-ellipsis-settings .inline-drawer-icon {
     font-size: 0.95rem;
     color: var(--grey-30, #6d7680);
     transition: transform 0.2s ease;
 }
 
-.inline-drawer-content {
+#remove-ellipsis-settings .inline-drawer-content {
     padding: 1rem 1rem 0.9rem;
     display: none;
     background: transparent;
 }
 
-.checkbox_label {
+#remove-ellipsis-settings .checkbox_label {
     display: flex;
     align-items: center;
     gap: 0.65rem;
@@ -83,13 +83,13 @@
     font-size: 0.95rem;
 }
 
-.checkbox_label input[type="checkbox"] {
+#remove-ellipsis-settings .checkbox_label input[type="checkbox"] {
     width: 18px;
     height: 18px;
     accent-color: var(--smart-blue, #4f7fff);
 }
 
-.menu_button {
+#remove-ellipsis-settings .menu_button {
     display: inline-flex;
     align-items: center;
     justify-content: center;
@@ -104,12 +104,12 @@
     transition: background 0.2s ease, border-color 0.2s ease;
 }
 
-.menu_button:hover {
+#remove-ellipsis-settings .menu_button:hover {
     background: var(--grey-10, #eef1f4);
     border-color: var(--grey-50, #a9afb6);
 }
 
-.styled_description_block {
+#remove-ellipsis-settings .styled_description_block {
     margin-bottom: 0.9rem;
     color: var(--grey-40, #7b838b);
     font-size: 0.9rem;
