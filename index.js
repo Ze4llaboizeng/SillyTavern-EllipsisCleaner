@@ -167,9 +167,11 @@
             const st = Core.getSettings();
 
             // สร้างปุ่มลัดพร้อม popup menu
+            // หมายเหตุ: ไม่ใส่ title เพื่อไม่ให้ tooltip ของ browser โผล่ขึ้นมาตลอดเวลา
+            // การใช้งาน: คลิกสั้น = Clean Now, กดค้าง = เปิด popup menu
             const quickBtn = $(`
                 <div id="rm-ell-quick-btn-wrapper" class="rm-ell-quick-btn-wrapper">
-                    <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" title="Text Cleaner - Click for options">
+                    <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" role="button" aria-label="Text Cleaner: tap to clean, hold for options">
                         <i class="fa-solid fa-broom"></i>
                     </div>
                     <div id="rm-ell-popup-menu" class="rm-ell-popup-menu">
@@ -211,11 +213,72 @@
                 sendForm.append(quickBtn);
             }
 
-            // Event handlers - Click เพื่อเปิด/ปิด popup menu
+            // Event handlers — รองรับ long-press:
+            //   • คลิกสั้น (< 500ms)  = Clean Now ทันที
+            //   • กดค้าง (≥ 500ms)    = เปิด/ปิด popup menu
+            const LONG_PRESS_MS = 500;
+            const btnEl = document.getElementById('rm-ell-quick-btn');
+            let pressTimer = null;
+            let longPressFired = false;
+            let pressActive = false;
+
+            const clearPressTimer = () => {
+                if (pressTimer) {
+                    clearTimeout(pressTimer);
+                    pressTimer = null;
+                }
+            };
+
+            const startPress = (e) => {
+                // รับเฉพาะปุ่มซ้ายของเมาส์ (ปล่อย touch ผ่าน)
+                if (e.type === 'mousedown' && e.button !== 0) return;
+                pressActive = true;
+                longPressFired = false;
+                btnEl?.classList.add('rm-ell-pressing');
+                clearPressTimer();
+                pressTimer = setTimeout(() => {
+                    longPressFired = true;
+                    btnEl?.classList.remove('rm-ell-pressing');
+                    // เปิดเมนูด้วย long-press
+                    this.togglePopupMenu();
+                    // feedback การกดค้าง (ถ้า browser รองรับ)
+                    if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }
+                }, LONG_PRESS_MS);
+            };
+
+            const endPress = (e, cancelled = false) => {
+                if (!pressActive) return;
+                pressActive = false;
+                clearPressTimer();
+                btnEl?.classList.remove('rm-ell-pressing');
+                if (cancelled || longPressFired) return;
+                // คลิกสั้น = Clean Now ทันที
+                if (e) { try { e.preventDefault(); e.stopPropagation(); } catch (_) {} }
+                App.removeAll();
+            };
+
+            // Mouse events
+            $('#rm-ell-quick-btn')
+                .on('mousedown', (e) => startPress(e))
+                .on('mouseup', (e) => endPress(e))
+                .on('mouseleave', () => endPress(null, true));
+
+            // Touch events (มือถือ/แท็บเล็ต)
+            $('#rm-ell-quick-btn')
+                .on('touchstart', (e) => { startPress(e); }, { passive: true })
+                .on('touchend', (e) => endPress(e))
+                .on('touchcancel', () => endPress(null, true));
+
+            // ป้องกัน context menu โผล่ตอนกดค้าง (โดยเฉพาะบนมือถือ)
+            $('#rm-ell-quick-btn').on('contextmenu', (e) => {
+                e.preventDefault();
+                return false;
+            });
+
+            // กัน click ปกติ ไม่ให้ทำซ้ำกับ mouseup (และกัน bubbling ไป document)
             $('#rm-ell-quick-btn').on('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                this.togglePopupMenu();
             });
 
             // Popup menu item handlers
@@ -324,12 +387,13 @@
             const btn = $('#rm-ell-quick-btn');
             if (!btn.length) return;
             const st = Core.getSettings();
+            // ไม่ใช้ title attribute เพื่อไม่ให้ browser tooltip โผล่ตลอดเวลา
+            // (ผู้ใช้สามารถเปิดเมนูได้ด้วยการกดค้างที่ปุ่ม)
+            btn.removeAttr('title');
             if (st.autoRemove) {
                 btn.addClass('rm-ell-auto-active');
-                btn.attr('title', 'Text Cleaner (Auto: ON) - Click for options');
             } else {
                 btn.removeClass('rm-ell-auto-active');
-                btn.attr('title', 'Text Cleaner (Auto: OFF) - Click for options');
             }
         },
 

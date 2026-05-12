@@ -5,6 +5,15 @@
     margin-bottom: 10px;
 }
 
+/* ============================================================
+   QUICK BUTTON (ใกล้ช่องพิมพ์)
+   ============================================================ */
+#rm-ell-quick-btn-wrapper {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+}
 
 #rm-ell-quick-btn {
     display: inline-flex;
@@ -18,13 +27,21 @@
     border: 1px solid var(--SmartThemeBorderColor, #c4c7cc);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
     cursor: pointer;
-    transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
-    margin: 0 5px; 
+    transition: background 0.2s ease, transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    margin: 0 5px;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
 }
 
 #rm-ell-quick-btn:hover {
     background: var(--blackA60, #e4e8ed);
     transform: translateY(-1px);
+}
+
+#rm-ell-quick-btn:active {
+    transform: scale(0.95);
 }
 
 #rm-ell-quick-btn.rm-ell-auto-active {
@@ -33,7 +50,136 @@
     border-color: var(--green-60, #2f6f40) !important;
 }
 
+/* แสดงผลตอนกำลังกดค้าง (long-press progress) */
+#rm-ell-quick-btn.rm-ell-pressing {
+    box-shadow: 0 0 0 3px var(--SmartThemeQuoteColor, #4a90e2);
+    transform: scale(0.95);
+}
 
+/* ============================================================
+   POPUP MENU (เมนูเปิดด้วยการกดค้าง)
+   ============================================================ */
+.rm-ell-popup-menu {
+    /* ซ่อนเป็นค่าเริ่มต้น */
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 10px);
+    right: 0;
+    min-width: 220px;
+    background: var(--SmartThemeBlurTintColor, #1f2226);
+    color: var(--SmartThemeBodyColor, #e6e6e6);
+    border: 1px solid var(--SmartThemeBorderColor, #3a3f47);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+    padding: 6px;
+    z-index: 10000;
+    font-size: 0.92em;
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    animation: rmEllPopupIn 0.15s ease-out;
+}
+
+.rm-ell-popup-menu.show {
+    display: block;
+}
+
+@keyframes rmEllPopupIn {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.rm-ell-popup-header {
+    padding: 8px 12px;
+    font-weight: bold;
+    color: var(--SmartThemeQuoteColor, #8ab4f8);
+    border-bottom: 1px solid var(--SmartThemeBorderColor, #3a3f47);
+    margin-bottom: 4px;
+    font-size: 0.95em;
+}
+
+.rm-ell-popup-header i {
+    margin-right: 6px;
+}
+
+.rm-ell-popup-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.15s ease;
+    gap: 10px;
+}
+
+.rm-ell-popup-item:hover {
+    background: var(--blackA40, rgba(255, 255, 255, 0.08));
+}
+
+.rm-ell-popup-item i {
+    margin-right: 6px;
+    width: 16px;
+    text-align: center;
+}
+
+.rm-ell-popup-divider {
+    height: 1px;
+    background: var(--SmartThemeBorderColor, #3a3f47);
+    margin: 4px 6px;
+    opacity: 0.5;
+}
+
+.rm-ell-toggle-label {
+    display: inline-flex;
+    align-items: center;
+    flex: 1;
+}
+
+.rm-ell-toggle-status {
+    font-size: 0.78em;
+    font-weight: bold;
+    padding: 2px 8px;
+    border-radius: 10px;
+    letter-spacing: 0.5px;
+}
+
+.rm-ell-toggle-status.on {
+    background: var(--green-50, #3c8d51);
+    color: #fff;
+}
+
+.rm-ell-toggle-status.off {
+    background: var(--grey-50, #555);
+    color: #ccc;
+}
+
+/* ============================================================
+   HEADER STATUS BADGE (ใน drawer settings)
+   ============================================================ */
+.rm-ell-header-status {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 0.7em;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-weight: bold;
+    letter-spacing: 0.5px;
+    vertical-align: middle;
+}
+
+.rm-ell-header-status.on {
+    background: var(--green-50, #3c8d51);
+    color: #fff;
+}
+
+.rm-ell-header-status.off {
+    background: var(--grey-50, #555);
+    color: #ccc;
+}
+
+/* ============================================================
+   SETTINGS PANEL
+   ============================================================ */
 #remove-ellipsis-settings .styled_description_block {
     margin-bottom: 0.9rem;
     color: var(--SmartThemeQuoteColor, #7b838b);
