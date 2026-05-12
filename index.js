@@ -70,13 +70,10 @@
 
             // --- 1. REMOVE ENGLISH PARENTHESES AFTER THAI ---
             if (settings.removeEngParens) {
-                // อธิบาย Regex ใหม่:
-                // Group 1: จับตัวอักษรไทย รวมถึงสัญลักษณ์ตกแต่ง (เช่น *, _, ") ที่อาจคั่นอยู่
-                // Group 2: จับช่องว่าง(ถ้ามี) + วงเล็บที่มีภาษาอังกฤษข้างใน
                 const engParenRegex = /([\u0E00-\u0E7F][*_"']*)(\s*\([^)]*[A-Za-z][^)]*\))/g;
                 processed = processed.replace(engParenRegex, (match, g1, g2) => {
                     removedCount += g2.length;
-                    return g1; // คืนค่าภาษาไทยกลับไป ลบเฉพาะ Group 2 (วงเล็บ) ทิ้ง
+                    return g1; 
                 });
             }
 
@@ -155,18 +152,15 @@
             if (typeof $ !== 'undefined') $('.drawer-overlay').trigger('click');
         },
 
-        // ปุ่มลัดใกล้ช่องพิมพ์ข้อความ
         injectQuickButton() {
             if (typeof $ === 'undefined') return;
             if ($('#rm-ell-quick-btn').length > 0) return;
 
-            // หา container ใกล้ช่องพิมพ์ข้อความ
             const sendForm = $('#send_form');
             if (!sendForm.length) return;
 
             const st = Core.getSettings();
 
-            // สร้างปุ่มลัดพร้อม popup menu
             const quickBtn = $(`
                 <div id="rm-ell-quick-btn-wrapper" class="rm-ell-quick-btn-wrapper">
                     <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" title="Text Cleaner - Click for options">
@@ -203,7 +197,6 @@
                 </div>
             `);
 
-            // แทรกปุ่มก่อน send_but หรือท้าย send_form
             const sendBut = $('#send_but');
             if (sendBut.length) {
                 sendBut.before(quickBtn);
@@ -211,14 +204,12 @@
                 sendForm.append(quickBtn);
             }
 
-            // Event handlers - Click เพื่อเปิด/ปิด popup menu
             $('#rm-ell-quick-btn').on('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
                 this.togglePopupMenu();
             });
 
-            // Popup menu item handlers
             $('#rm-ell-popup-clean').on('click', async (e) => {
                 e.stopPropagation();
                 this.hidePopupMenu();
@@ -239,7 +230,6 @@
                 this.updatePopupMenuState();
                 this.updateQuickButtonState();
                 this.updateDrawerHeaderStatus();
-                // Sync checkbox in settings panel
                 $('#rm-ell-auto').prop('checked', st.autoRemove);
                 UI.notify(`Auto Remove: ${st.autoRemove ? 'ON' : 'OFF'}`);
             });
@@ -250,7 +240,6 @@
                 st.removeEngParens = !st.removeEngParens;
                 Core.saveSettings();
                 this.updatePopupMenuState();
-                // Sync checkbox in settings panel
                 $('#rm-ell-engparens').prop('checked', st.removeEngParens);
                 UI.notify(`Remove English in ( ): ${st.removeEngParens ? 'ON' : 'OFF'}`);
             });
@@ -258,11 +247,9 @@
             $('#rm-ell-popup-settings').on('click', (e) => {
                 e.stopPropagation();
                 this.hidePopupMenu();
-                // เปิด extensions drawer และ scroll ไปที่ settings
                 this.openExtensionSettings();
             });
 
-            // ปิด popup เมื่อคลิกที่อื่น
             $(document).on('click.rmellpopup', (e) => {
                 if (!$(e.target).closest('#rm-ell-quick-btn-wrapper').length) {
                     this.hidePopupMenu();
@@ -288,32 +275,26 @@
 
         updatePopupMenuState() {
             const st = Core.getSettings();
-            // Update Auto Remove status
             const autoStatus = $('#rm-ell-popup-auto .rm-ell-toggle-status');
             autoStatus.text(st.autoRemove ? 'ON' : 'OFF');
             autoStatus.removeClass('on off').addClass(st.autoRemove ? 'on' : 'off');
             
-            // Update Remove English Parens status
             const engStatus = $('#rm-ell-popup-engparens .rm-ell-toggle-status');
             engStatus.text(st.removeEngParens ? 'ON' : 'OFF');
             engStatus.removeClass('on off').addClass(st.removeEngParens ? 'on' : 'off');
         },
 
         openExtensionSettings() {
-            // เปิด extensions panel
             const extensionsBtn = $('#extensionsMenuButton, #extensions_button, [data-i18n="Extensions"]').first();
             if (extensionsBtn.length) {
                 extensionsBtn.trigger('click');
-                // รอให้ panel เปิดแล้ว scroll ไปที่ settings
                 setTimeout(() => {
                     const settingsBlock = $('#remove-ellipsis-settings');
                     if (settingsBlock.length) {
-                        // เปิด drawer ถ้ายังไม่เปิด
                         const drawerContent = settingsBlock.find('.inline-drawer-content');
                         if (drawerContent.css('display') === 'none') {
                             settingsBlock.find('.inline-drawer-toggle').trigger('click');
                         }
-                        // Scroll ไปที่ settings block
                         settingsBlock[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
                     }
                 }, 300);
@@ -338,17 +319,25 @@
             let statusBadge = $('#rm-ell-header-status');
             
             if (!statusBadge.length) {
-                // สร้าง status badge ถ้ายังไม่มี
                 const header = $('#remove-ellipsis-settings .inline-drawer-toggle b');
                 if (header.length) {
+                    // แทรก span ในกรณีที่ยังไม่มี
                     header.append(`<span id="rm-ell-header-status" class="rm-ell-header-status ${st.autoRemove ? 'on' : 'off'}">${st.autoRemove ? 'ON' : 'OFF'}</span>`);
                     statusBadge = $('#rm-ell-header-status');
                 }
             }
             
             if (statusBadge.length) {
-                statusBadge.text(st.autoRemove ? 'ON' : 'OFF');
-                statusBadge.removeClass('on off').addClass(st.autoRemove ? 'on' : 'off');
+                const newStateText = st.autoRemove ? 'ON' : 'OFF';
+                const newStateClass = st.autoRemove ? 'on' : 'off';
+                
+                // 🛑 แก้บั๊ก Infinite Loop: อัปเดตก็ต่อเมื่อข้อความเปลี่ยนจริงๆ เท่านั้น 🛑
+                if (statusBadge.text() !== newStateText) {
+                    statusBadge.text(newStateText);
+                }
+                if (!statusBadge.hasClass(newStateClass)) {
+                    statusBadge.removeClass('on off').addClass(newStateClass);
+                }
             }
         }
     };
@@ -364,19 +353,16 @@
             let count = 0;
             let updatedIndexes = [];
             
-            // 1. วนเช็กและลบจุด/วงเล็บ ในข้อมูล Chat
             ctx.chat.forEach((msg, index) => {
                 const removed = Cleaner.cleanMessage(msg);
                 if (removed > 0) {
                     count += removed;
-                    updatedIndexes.push(index); // บันทึกตำแหน่งที่ถูกแก้ไข
+                    updatedIndexes.push(index); 
                 }
             });
             
-            // 2. ถ้ามีการแก้ไข ให้ทำการบังคับรีเรนเดอร์ UI ทันที
             if (updatedIndexes.length > 0) {
                 updatedIndexes.forEach(index => {
-                    // ใช้ฟังก์ชันหลักของ ST เพื่อเรนเดอร์กล่องข้อความที่มีการแก้ไขใหม่
                     if (typeof window.updateMessageBlock === 'function') {
                         window.updateMessageBlock(index, ctx.chat[index]);
                     } else if (typeof ctx.updateMessageBlock === 'function') {
@@ -419,7 +405,7 @@
                 <div id="remove-ellipsis-settings" class="extension_settings_block">
                     <div class="inline-drawer">
                         <div class="inline-drawer-toggle inline-drawer-header">
-                            <b><i class="fa-solid fa-broom"></i> Text Cleaner Ext</b>
+                            <b><i class="fa-solid fa-broom"></i> Text Cleaner Ext <span id="rm-ell-header-status" class="rm-ell-header-status ${st.autoRemove ? 'on' : 'off'}">${st.autoRemove ? 'ON' : 'OFF'}</span></b>
                             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
                         </div>
                         <div class="inline-drawer-content" style="display:none;">
@@ -493,9 +479,9 @@
 
             $(document).on('change', '#rm-ell-auto', (e) => {
                 updateSetting('autoRemove', e.target.checked);
-                UI.updateQuickButtonState(); // Sync quick button state
-                UI.updatePopupMenuState(); // Sync popup menu state
-                UI.updateDrawerHeaderStatus(); // Sync header status
+                UI.updateQuickButtonState(); 
+                UI.updatePopupMenuState(); 
+                UI.updateDrawerHeaderStatus(); 
                 UI.notify(`Auto Remove: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
             $(document).on('change', '#rm-ell-engparens', (e) => {
@@ -521,7 +507,7 @@
             $(document).on('click', '#rm-ell-btn-clean', async (e) => {
                 e.preventDefault();
                 UI.closeDrawer();
-                await App.removeAll(); // ทำงานและอัปเดต UI ทันที
+                await App.removeAll(); 
             });
             $(document).on('click', '#rm-ell-btn-check', async (e) => {
                 e.preventDefault();
@@ -534,7 +520,6 @@
             const ctx = Core.getContext();
             this.bindEvents(); 
             if (ctx?.eventSource) {
-                // อัปเดตเมื่อ AI สร้างข้อความเสร็จสมบูรณ์
                 ctx.eventSource.on(ctx.event_types.MESSAGE_RECEIVED, async () => {
                     if (Core.getSettings().autoRemove) await App.removeAll(true);
                 });
@@ -548,13 +533,12 @@
         if (typeof document === 'undefined') return;
         const onReady = () => {
             App.init();
-            // อัปเดต header status หลังจาก inject settings
-            setTimeout(() => UI.updateDrawerHeaderStatus(), 100);
             
             const obs = new MutationObserver(() => {
                 App.injectSettings();
                 UI.injectQuickButton();
-                UI.updateDrawerHeaderStatus();
+                // 🛑 เราเอา UI.updateDrawerHeaderStatus() ออกจากตรงนี้แล้ว
+                // เพราะมันไม่จำเป็นต้องเช็คทุกครั้งที่มีการขยับเมาส์/เลื่อนหน้าจอ
             });
             const target = document.querySelector('#content') || document.body;
             obs.observe(target, { childList: true, subtree: true });
