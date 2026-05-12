@@ -33,6 +33,7 @@
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
+    font-size: 16px;
 }
 
 #rm-ell-quick-btn:hover {
@@ -65,7 +66,8 @@
     position: absolute;
     bottom: calc(100% + 10px);
     right: 0;
-    min-width: 220px;
+    min-width: 230px;
+    max-width: calc(100vw - 24px);
     background: var(--SmartThemeBlurTintColor, #1f2226);
     color: var(--SmartThemeBodyColor, #e6e6e6);
     border: 1px solid var(--SmartThemeBorderColor, #3a3f47);
@@ -73,7 +75,9 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     padding: 6px;
     z-index: 10000;
-    font-size: 0.92em;
+    /* ขนาดพื้นฐาน (PC) */
+    font-size: 13px;
+    line-height: 1.4;
     backdrop-filter: blur(8px);
     -webkit-backdrop-filter: blur(8px);
     animation: rmEllPopupIn 0.15s ease-out;
@@ -94,7 +98,8 @@
     color: var(--SmartThemeQuoteColor, #8ab4f8);
     border-bottom: 1px solid var(--SmartThemeBorderColor, #3a3f47);
     margin-bottom: 4px;
-    font-size: 0.95em;
+    font-size: 1em;
+    white-space: nowrap;
 }
 
 .rm-ell-popup-header i {
@@ -110,6 +115,8 @@
     cursor: pointer;
     transition: background 0.15s ease;
     gap: 10px;
+    font-size: 1em;
+    white-space: nowrap;
 }
 
 .rm-ell-popup-item:hover {
@@ -120,6 +127,7 @@
     margin-right: 6px;
     width: 16px;
     text-align: center;
+    flex-shrink: 0;
 }
 
 .rm-ell-popup-divider {
@@ -133,6 +141,7 @@
     display: inline-flex;
     align-items: center;
     flex: 1;
+    min-width: 0;
 }
 
 .rm-ell-toggle-status {
@@ -141,6 +150,7 @@
     padding: 2px 8px;
     border-radius: 10px;
     letter-spacing: 0.5px;
+    flex-shrink: 0;
 }
 
 .rm-ell-toggle-status.on {
@@ -151,6 +161,67 @@
 .rm-ell-toggle-status.off {
     background: var(--grey-50, #555);
     color: #ccc;
+}
+
+/* ------------------------------------------------------------
+   Responsive: Tablet
+   ------------------------------------------------------------ */
+@media (max-width: 900px) {
+    .rm-ell-popup-menu {
+        font-size: 14px;
+        min-width: 240px;
+    }
+    .rm-ell-popup-item {
+        padding: 9px 12px;
+    }
+}
+
+/* ------------------------------------------------------------
+   Responsive: Mobile
+   ------------------------------------------------------------ */
+@media (max-width: 600px) {
+    #rm-ell-quick-btn {
+        width: 36px;
+        height: 36px;
+        font-size: 15px;
+        margin: 0 4px;
+    }
+    .rm-ell-popup-menu {
+        font-size: 15px;
+        min-width: 220px;
+        max-width: calc(100vw - 20px);
+        right: 0;
+        padding: 5px;
+    }
+    .rm-ell-popup-header {
+        padding: 9px 12px;
+        font-size: 1em;
+    }
+    .rm-ell-popup-item {
+        padding: 11px 12px; /* แตะง่ายขึ้นบนมือถือ */
+        gap: 8px;
+    }
+    .rm-ell-popup-item i {
+        width: 18px;
+        font-size: 0.95em;
+    }
+    .rm-ell-toggle-status {
+        font-size: 0.72em;
+        padding: 3px 8px;
+    }
+}
+
+/* ------------------------------------------------------------
+   Responsive: Mobile เล็กมาก (< 380px)
+   ------------------------------------------------------------ */
+@media (max-width: 380px) {
+    .rm-ell-popup-menu {
+        font-size: 14px;
+        min-width: 190px;
+    }
+    .rm-ell-popup-item {
+        padding: 10px;
+    }
 }
 
 /* ============================================================
@@ -192,4 +263,16 @@
     border: none;
     border-bottom: 1px solid var(--SmartThemeBorderColor, #d1d6dc);
     opacity: 0.5;
+}
+
+/* highlight effect เมื่อ scroll ไปที่ settings จากปุ่ม More Settings */
+#remove-ellipsis-settings.rm-ell-highlight > .inline-drawer {
+    animation: rmEllHighlight 1.5s ease;
+    border-radius: 8px;
+}
+
+@keyframes rmEllHighlight {
+    0%   { box-shadow: 0 0 0 0 var(--SmartThemeQuoteColor, #4a90e2); }
+    30%  { box-shadow: 0 0 0 4px var(--SmartThemeQuoteColor, #4a90e2); }
+    100% { box-shadow: 0 0 0 0 rgba(74, 144, 226, 0); }
 }

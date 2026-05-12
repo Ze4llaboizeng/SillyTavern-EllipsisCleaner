@@ -363,24 +363,65 @@
         },
 
         openExtensionSettings() {
-            // เปิด extensions panel
-            const extensionsBtn = $('#extensionsMenuButton, #extensions_button, [data-i18n="Extensions"]').first();
-            if (extensionsBtn.length) {
-                extensionsBtn.trigger('click');
-                // รอให้ panel เปิดแล้ว scroll ไปที่ settings
-                setTimeout(() => {
-                    const settingsBlock = $('#remove-ellipsis-settings');
-                    if (settingsBlock.length) {
-                        // เปิด drawer ถ้ายังไม่เปิด
-                        const drawerContent = settingsBlock.find('.inline-drawer-content');
-                        if (drawerContent.css('display') === 'none') {
-                            settingsBlock.find('.inline-drawer-toggle').trigger('click');
-                        }
-                        // Scroll ไปที่ settings block
-                        settingsBlock[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // หา button เปิด Extensions panel ของ SillyTavern (รองรับหลายเวอร์ชัน/ธีม)
+            const findExtensionsToggle = () => {
+                const candidates = [
+                    '#extensionsMenuButton',
+                    '#extensions-settings-button',
+                    '#extensions_button',
+                    '#extensions-settings-button .drawer-toggle',
+                    '[data-i18n="Extensions"]',
+                    '#rightNavDrawerIcon'
+                ];
+                for (const sel of candidates) {
+                    const el = $(sel).first();
+                    if (el.length) return el;
+                }
+                return $();
+            };
+
+            const ensureDrawerOpen = () => {
+                // ถ้า extensions_settings ยังไม่ visible ให้คลิกปุ่มเปิด drawer
+                const panel = $('#extensions_settings');
+                const isVisible = panel.length && panel.is(':visible');
+                if (!isVisible) {
+                    const btn = findExtensionsToggle();
+                    if (btn.length) {
+                        btn.trigger('click');
+                        return true;
                     }
-                }, 300);
-            }
+                }
+                return isVisible;
+            };
+
+            const scrollToSettings = (attempt = 0) => {
+                const settingsBlock = $('#remove-ellipsis-settings');
+                if (!settingsBlock.length) {
+                    // ถ้ายังไม่มี ลอง inject ใหม่
+                    if (attempt < 5) {
+                        if (typeof App !== 'undefined' && App.injectSettings) App.injectSettings();
+                        setTimeout(() => scrollToSettings(attempt + 1), 200);
+                    }
+                    return;
+                }
+                // เปิด inline drawer ถ้ายังไม่เปิด
+                const drawerContent = settingsBlock.find('.inline-drawer-content');
+                if (drawerContent.length && drawerContent.css('display') === 'none') {
+                    settingsBlock.find('.inline-drawer-toggle').trigger('click');
+                }
+                // Scroll & highlight
+                try {
+                    settingsBlock[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                } catch (_) {
+                    settingsBlock[0].scrollIntoView();
+                }
+                settingsBlock.addClass('rm-ell-highlight');
+                setTimeout(() => settingsBlock.removeClass('rm-ell-highlight'), 1600);
+            };
+
+            ensureDrawerOpen();
+            // ให้เวลา drawer animation แล้วค่อย scroll
+            setTimeout(() => scrollToSettings(0), 350);
         },
 
         updateQuickButtonState() {
