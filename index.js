@@ -172,7 +172,7 @@
             const quickBtn = $(`
                 <div id="rm-ell-quick-btn-wrapper" class="rm-ell-quick-btn-wrapper">
                     <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" role="button" aria-label="Text Cleaner: tap to clean, hold for options">
-                        <i class="fa-solid fa-broom"></i>
+                        <span class="rm-ell-quick-btn-emoji" aria-hidden="true">📝</span>
                     </div>
                     <div id="rm-ell-popup-menu" class="rm-ell-popup-menu">
                         <div class="rm-ell-popup-header">
@@ -363,66 +363,42 @@
         },
 
         openExtensionSettings() {
-            // หา button เปิด Extensions panel ของ SillyTavern (รองรับหลายเวอร์ชัน/ธีม)
-            const findExtensionsToggle = () => {
-                const candidates = [
-                    '#extensionsMenuButton',
-                    '#extensions-settings-button',
-                    '#extensions_button',
-                    '#extensions-settings-button .drawer-toggle',
-                    '[data-i18n="Extensions"]',
-                    '#rightNavDrawerIcon'
-                ];
-                for (const sel of candidates) {
-                    const el = $(sel).first();
-                    if (el.length) return el;
-                }
-                return $();
-            };
+            // เปิด Extensions Menu popup (ปุ่ม 🧩 ใกล้ช่องพิมพ์) แล้ว scroll ไปที่ entry ของ extension นี้
+            const menuButton = $('#extensionsMenuButton').first();
+            const extMenu = $('#extensionsMenu');
 
-            const ensureDrawerOpen = () => {
-                // ถ้า extensions_settings ยังไม่ visible ให้คลิกปุ่มเปิด drawer
-                const panel = $('#extensions_settings');
-                const isVisible = panel.length && panel.is(':visible');
-                if (!isVisible) {
-                    const btn = findExtensionsToggle();
-                    if (btn.length) {
-                        btn.trigger('click');
-                        return true;
-                    }
-                }
-                return isVisible;
-            };
+            // ตรวจว่า menu visible หรือยัง
+            const isMenuVisible = extMenu.length && extMenu.is(':visible');
+            if (!isMenuVisible && menuButton.length) {
+                menuButton.trigger('click');
+            }
 
-            const scrollToSettings = (attempt = 0) => {
-                const settingsBlock = $('#remove-ellipsis-settings');
-                if (!settingsBlock.length) {
-                    // ถ้ายังไม่มี ลอง inject ใหม่
-                    if (attempt < 5) {
-                        if (typeof App !== 'undefined' && App.injectSettings) App.injectSettings();
-                        setTimeout(() => scrollToSettings(attempt + 1), 200);
+            const scrollToEntry = (attempt = 0) => {
+                // ให้แน่ใจว่า entry ของเราถูก inject เข้า extensions menu แล้ว
+                if (typeof App !== 'undefined' && App.injectExtensionsMenuEntry) {
+                    App.injectExtensionsMenuEntry();
+                }
+                const entry = $('#rm-ell-extmenu-entry');
+                if (!entry.length) {
+                    if (attempt < 6) {
+                        setTimeout(() => scrollToEntry(attempt + 1), 150);
                     }
                     return;
                 }
-                // เปิด inline drawer ถ้ายังไม่เปิด
-                const drawerContent = settingsBlock.find('.inline-drawer-content');
-                if (drawerContent.length && drawerContent.css('display') === 'none') {
-                    settingsBlock.find('.inline-drawer-toggle').trigger('click');
-                }
                 // Scroll & highlight
                 try {
-                    settingsBlock[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    entry[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
                 } catch (_) {
-                    settingsBlock[0].scrollIntoView();
+                    entry[0].scrollIntoView();
                 }
-                settingsBlock.addClass('rm-ell-highlight');
-                setTimeout(() => settingsBlock.removeClass('rm-ell-highlight'), 1600);
+                entry.addClass('rm-ell-highlight');
+                setTimeout(() => entry.removeClass('rm-ell-highlight'), 1600);
             };
 
-            ensureDrawerOpen();
-            // ให้เวลา drawer animation แล้วค่อย scroll
-            setTimeout(() => scrollToSettings(0), 350);
+            // รอให้ menu render เสร็จก่อนค่อย scroll
+            setTimeout(() => scrollToEntry(0), 200);
         },
+
 
         updateQuickButtonState() {
             const btn = $('#rm-ell-quick-btn');
@@ -520,14 +496,73 @@
             else if (typeof toastr !== 'undefined') toastr.info(count > 0 ? `Found ${count} elements.` : 'All clean.', 'Check Result');
         },
 
+        // สร้าง HTML สำหรับ settings panel (ใช้ร่วมระหว่าง drawer และ extensions menu)
+        buildSettingsPanelHtml(idPrefix = '') {
+            const st = Core.getSettings();
+            // ใช้ idPrefix เพื่อแยก ID ของ inputs ระหว่างสองตำแหน่ง (drawer vs ext-menu)
+            // แต่ใช้ class กลาง (rm-ell-input-*) เพื่อให้ event handlers จับได้ทั้งสองที่
+            const p = idPrefix;
+            return `
+                <div class="styled_description_block">Extension by Zealllll</div>
+
+                <label class="checkbox_label">
+                    <input type="checkbox" class="rm-ell-input-auto" id="${p}rm-ell-auto" ${st.autoRemove ? 'checked' : ''} />
+                    <span>Auto Remove (After Generation)</span>
+                </label>
+
+                <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
+
+                <label class="checkbox_label" title="ลบวงเล็บภาษาอังกฤษที่ตามหลังภาษาไทย เช่น แชท(chat) ให้เหลือแค่ แชท">
+                    <input type="checkbox" class="rm-ell-input-engparens" id="${p}rm-ell-engparens" ${st.removeEngParens ? 'checked' : ''} />
+                    <span style="color:var(--smart-blue);"><b>Remove English in ( )</b></span>
+                </label>
+
+                <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
+
+                <label class="checkbox_label" title="อันตราย: ตัวเลือกนี้จะลบจุด (.) ทุกตัวในข้อความ!">
+                    <input type="checkbox" class="rm-ell-input-all" id="${p}rm-ell-all" ${st.removeAllDots ? 'checked' : ''} />
+                    <span>Remove ALL Dots (.)</span>
+                </label>
+
+                <label class="checkbox_label">
+                    <input type="checkbox" class="rm-ell-input-twodots" id="${p}rm-ell-twodots" ${st.treatTwoDots ? 'checked' : ''} />
+                    <span>Remove ".."</span>
+                </label>
+
+                <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
+
+                <label class="checkbox_label">
+                    <input type="checkbox" class="rm-ell-input-protect" id="${p}rm-ell-protect" ${st.protectCode !== false ? 'checked' : ''} />
+                    <span>Protect Code & HTML</span>
+                </label>
+
+                <label class="checkbox_label">
+                    <input type="checkbox" class="rm-ell-input-space" id="${p}rm-ell-space" ${st.preserveSpace ? 'checked' : ''} />
+                    <span>Preserve Space</span>
+                </label>
+
+                <label class="checkbox_label" title="แสดงแจ้งเตือนเมื่อทำการลบจุดหรือวงเล็บ">
+                    <input type="checkbox" class="rm-ell-input-notify" id="${p}rm-ell-notify" ${st.notifications !== false ? 'checked' : ''} />
+                    <span>Show Notifications</span>
+                </label>
+
+                <div style="display: flex; gap: 10px; margin-top: 15px;">
+                    <div class="rm-ell-btn-clean menu_button" style="flex: 1;" title="ลบสิ่งสกปรกในแชทปัจจุบันทันที">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Clean Now
+                    </div>
+                    <div class="rm-ell-btn-check menu_button" style="flex: 1;" title="ตรวจสอบจำนวนที่ต้องลบ">
+                        <i class="fa-solid fa-magnifying-glass"></i> Check
+                    </div>
+                </div>
+            `;
+        },
+
         injectSettings() {
             if (typeof $ === 'undefined') return;
-            
+
             if ($('#remove-ellipsis-settings').length > 0) return;
             const container = $('#extensions_settings');
             if (!container.length) return;
-
-            const st = Core.getSettings();
 
             container.append(`
                 <div id="remove-ellipsis-settings" class="extension_settings_block">
@@ -536,67 +571,52 @@
                             <b><i class="fa-solid fa-broom"></i> Text Cleaner Ext</b>
                             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
                         </div>
-                        <div class="inline-drawer-content" style="display:none;">
-                            
-                            <div class="styled_description_block">Extension by Zealllll</div>
-                            
-                            <label class="checkbox_label">
-                                <input type="checkbox" id="rm-ell-auto" ${st.autoRemove ? 'checked' : ''} />
-                                <span>Auto Remove (After Generation)</span>
-                            </label>
-
-                            <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
-
-                            <label class="checkbox_label" title="ลบวงเล็บภาษาอังกฤษที่ตามหลังภาษาไทย เช่น แชท(chat) ให้เหลือแค่ แชท">
-                                <input type="checkbox" id="rm-ell-engparens" ${st.removeEngParens ? 'checked' : ''} />
-                                <span style="color:var(--smart-blue);"><b>Remove English in ( )</b></span>
-                            </label>
-
-                            <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
-
-                            <label class="checkbox_label" title="อันตราย: ตัวเลือกนี้จะลบจุด (.) ทุกตัวในข้อความ!">
-                                <input type="checkbox" id="rm-ell-all" ${st.removeAllDots ? 'checked' : ''} />
-                                <span>Remove ALL Dots (.)</span>
-                            </label>
-                            
-                            <label class="checkbox_label">
-                                <input type="checkbox" id="rm-ell-twodots" ${st.treatTwoDots ? 'checked' : ''} />
-                                <span>Remove ".."</span>
-                            </label>
-
-                            <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
-                            
-                            <label class="checkbox_label">
-                                <input type="checkbox" id="rm-ell-protect" ${st.protectCode !== false ? 'checked' : ''} />
-                                <span>Protect Code & HTML</span>
-                            </label>
-
-                            <label class="checkbox_label">
-                                <input type="checkbox" id="rm-ell-space" ${st.preserveSpace ? 'checked' : ''} />
-                                <span>Preserve Space</span>
-                            </label>
-
-                            <label class="checkbox_label" title="แสดงแจ้งเตือนเมื่อทำการลบจุดหรือวงเล็บ">
-                                <input type="checkbox" id="rm-ell-notify" ${st.notifications !== false ? 'checked' : ''} />
-                                <span>Show Notifications</span>
-                            </label>
-
-                            <div style="display: flex; gap: 10px; margin-top: 15px;">
-                                <div id="rm-ell-btn-clean" class="menu_button" style="flex: 1;" title="ลบสิ่งสกปรกในแชทปัจจุบันทันที">
-                                    <i class="fa-solid fa-wand-magic-sparkles"></i> Clean Now
-                                </div>
-                                <div id="rm-ell-btn-check" class="menu_button" style="flex: 1;" title="ตรวจสอบจำนวนที่ต้องลบ">
-                                    <i class="fa-solid fa-magnifying-glass"></i> Check
-                                </div>
-                            </div>
-
+                        <div class="inline-drawer-content rm-ell-panel-body" style="display:none;">
+                            ${this.buildSettingsPanelHtml('drawer-')}
                         </div>
                     </div>
                 </div>
             `);
         },
 
+        // Inject เข้า Extensions Menu popup (ปุ่ม 🧩 ใกล้ช่องพิมพ์)
+        injectExtensionsMenuEntry() {
+            if (typeof $ === 'undefined') return;
+            if ($('#rm-ell-extmenu-entry').length > 0) return;
+
+            const menu = $('#extensionsMenu');
+            if (!menu.length) return;
+
+            // สร้าง entry แบบ collapsible เพื่อไม่ให้กิน space ใน popup
+            const entry = $(`
+                <div id="rm-ell-extmenu-entry" class="extension_container interactable">
+                    <div class="rm-ell-extmenu-header list-group-item flex-container flexGap5 interactable" tabindex="0">
+                        <i class="fa-solid fa-broom"></i>
+                        <span style="flex:1;"><b>Text Cleaner Ext</b></span>
+                        <i class="rm-ell-extmenu-caret fa-solid fa-chevron-down"></i>
+                    </div>
+                    <div class="rm-ell-extmenu-body rm-ell-panel-body" style="display:none; padding: 8px 12px;">
+                        ${this.buildSettingsPanelHtml('extmenu-')}
+                    </div>
+                </div>
+            `);
+
+            menu.append(entry);
+
+            // toggle expand/collapse
+            entry.find('.rm-ell-extmenu-header').on('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const body = entry.find('.rm-ell-extmenu-body');
+                const caret = entry.find('.rm-ell-extmenu-caret');
+                const visible = body.is(':visible');
+                body.toggle(!visible);
+                caret.toggleClass('fa-chevron-down', visible).toggleClass('fa-chevron-up', !visible);
+            });
+        },
+
         bindEvents() {
+
             if (this._eventsBound) return;
             this._eventsBound = true;
 
@@ -605,44 +625,65 @@
                 Core.saveSettings();
             };
 
-            $(document).on('change', '#rm-ell-auto', (e) => {
+            // sync ค่า checkbox ของ class เดียวกันทุกตัว (ทั้งใน drawer + extensions menu)
+            const syncCheckboxes = (cls, checked) => {
+                $(`.${cls}`).each((_, el) => {
+                    if (el.checked !== checked) el.checked = checked;
+                });
+            };
+
+            $(document).on('change', '.rm-ell-input-auto', (e) => {
                 updateSetting('autoRemove', e.target.checked);
-                UI.updateQuickButtonState(); // Sync quick button state
-                UI.updatePopupMenuState(); // Sync popup menu state
-                UI.updateDrawerHeaderStatus(); // Sync header status
+                syncCheckboxes('rm-ell-input-auto', e.target.checked);
+                UI.updateQuickButtonState();
+                UI.updatePopupMenuState();
+                UI.updateDrawerHeaderStatus();
                 UI.notify(`Auto Remove: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
-            $(document).on('change', '#rm-ell-engparens', (e) => {
+            $(document).on('change', '.rm-ell-input-engparens', (e) => {
                 updateSetting('removeEngParens', e.target.checked);
+                syncCheckboxes('rm-ell-input-engparens', e.target.checked);
+                UI.updatePopupMenuState();
                 UI.notify(`Remove English in ( ): ${e.target.checked ? 'ON' : 'OFF'}`);
             });
-            $(document).on('change', '#rm-ell-all', (e) => {
+            $(document).on('change', '.rm-ell-input-all', (e) => {
                 updateSetting('removeAllDots', e.target.checked);
-                if(e.target.checked) UI.notify("Warning: Will remove ALL periods!", 'warning');
+                syncCheckboxes('rm-ell-input-all', e.target.checked);
+                if (e.target.checked) UI.notify("Warning: Will remove ALL periods!", 'warning');
             });
-            $(document).on('change', '#rm-ell-twodots', (e) => updateSetting('treatTwoDots', e.target.checked));
-            $(document).on('change', '#rm-ell-space', (e) => updateSetting('preserveSpace', e.target.checked));
-            $(document).on('change', '#rm-ell-protect', (e) => {
+            $(document).on('change', '.rm-ell-input-twodots', (e) => {
+                updateSetting('treatTwoDots', e.target.checked);
+                syncCheckboxes('rm-ell-input-twodots', e.target.checked);
+            });
+            $(document).on('change', '.rm-ell-input-space', (e) => {
+                updateSetting('preserveSpace', e.target.checked);
+                syncCheckboxes('rm-ell-input-space', e.target.checked);
+            });
+            $(document).on('change', '.rm-ell-input-protect', (e) => {
                 updateSetting('protectCode', e.target.checked);
+                syncCheckboxes('rm-ell-input-protect', e.target.checked);
                 UI.notify(`Code Protection: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
-            
-            $(document).on('change', '#rm-ell-notify', (e) => {
+            $(document).on('change', '.rm-ell-input-notify', (e) => {
                 updateSetting('notifications', e.target.checked);
-                if(e.target.checked) UI.notify('Notifications Enabled', 'success');
+                syncCheckboxes('rm-ell-input-notify', e.target.checked);
+                if (e.target.checked) UI.notify('Notifications Enabled', 'success');
             });
 
-            $(document).on('click', '#rm-ell-btn-clean', async (e) => {
+            $(document).on('click', '.rm-ell-btn-clean', async (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 UI.closeDrawer();
-                await App.removeAll(); // ทำงานและอัปเดต UI ทันที
+                await App.removeAll();
             });
-            $(document).on('click', '#rm-ell-btn-check', async (e) => {
+            $(document).on('click', '.rm-ell-btn-check', async (e) => {
                 e.preventDefault();
+                e.stopPropagation();
                 UI.closeDrawer();
                 await App.checkAll();
             });
         },
+
 
         init() {
             const ctx = Core.getContext();
@@ -680,9 +721,13 @@
                     if (!document.getElementById('remove-ellipsis-settings')) {
                         App.injectSettings();
                     }
+                    if (!document.getElementById('rm-ell-extmenu-entry')) {
+                        App.injectExtensionsMenuEntry();
+                    }
                     if (!document.getElementById('rm-ell-quick-btn')) {
                         UI.injectQuickButton();
                     }
+
                     UI.updateDrawerHeaderStatus();
                 } catch (err) {
                     console.error('[CleanerExt] observer error:', err);
