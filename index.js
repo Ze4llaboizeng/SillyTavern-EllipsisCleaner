@@ -164,10 +164,42 @@
             const sendForm = $('#send_form');
             if (!sendForm.length) return;
 
-            // สร้างปุ่มลัด
+            const st = Core.getSettings();
+
+            // สร้างปุ่มลัดพร้อม popup menu
             const quickBtn = $(`
-                <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" title="Text Cleaner - Click to clean, Right-click for options">
-                    <i class="fa-solid fa-broom"></i>
+                <div id="rm-ell-quick-btn-wrapper" class="rm-ell-quick-btn-wrapper">
+                    <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" title="Text Cleaner - Click for options">
+                        <i class="fa-solid fa-broom"></i>
+                    </div>
+                    <div id="rm-ell-popup-menu" class="rm-ell-popup-menu">
+                        <div class="rm-ell-popup-header">
+                            <i class="fa-solid fa-broom"></i> Text Cleaner
+                        </div>
+                        <div class="rm-ell-popup-item" id="rm-ell-popup-clean">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Clean Now
+                        </div>
+                        <div class="rm-ell-popup-item" id="rm-ell-popup-check">
+                            <i class="fa-solid fa-magnifying-glass"></i> Check
+                        </div>
+                        <div class="rm-ell-popup-divider"></div>
+                        <div class="rm-ell-popup-item rm-ell-popup-toggle" id="rm-ell-popup-auto">
+                            <span class="rm-ell-toggle-label">
+                                <i class="fa-solid fa-robot"></i> Auto Remove
+                            </span>
+                            <span class="rm-ell-toggle-status ${st.autoRemove ? 'on' : 'off'}">${st.autoRemove ? 'ON' : 'OFF'}</span>
+                        </div>
+                        <div class="rm-ell-popup-item rm-ell-popup-toggle" id="rm-ell-popup-engparens">
+                            <span class="rm-ell-toggle-label">
+                                <i class="fa-solid fa-language"></i> Remove ( )
+                            </span>
+                            <span class="rm-ell-toggle-status ${st.removeEngParens ? 'on' : 'off'}">${st.removeEngParens ? 'ON' : 'OFF'}</span>
+                        </div>
+                        <div class="rm-ell-popup-divider"></div>
+                        <div class="rm-ell-popup-item" id="rm-ell-popup-settings">
+                            <i class="fa-solid fa-gear"></i> More Settings...
+                        </div>
+                    </div>
                 </div>
             `);
 
@@ -179,24 +211,113 @@
                 sendForm.append(quickBtn);
             }
 
-            // Event handlers
-            quickBtn.on('click', async (e) => {
+            // Event handlers - Click เพื่อเปิด/ปิด popup menu
+            $('#rm-ell-quick-btn').on('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                this.togglePopupMenu();
+            });
+
+            // Popup menu item handlers
+            $('#rm-ell-popup-clean').on('click', async (e) => {
+                e.stopPropagation();
+                this.hidePopupMenu();
                 await App.removeAll();
             });
 
-            // Right-click เพื่อ toggle Auto mode
-            quickBtn.on('contextmenu', (e) => {
-                e.preventDefault();
+            $('#rm-ell-popup-check').on('click', async (e) => {
+                e.stopPropagation();
+                this.hidePopupMenu();
+                await App.checkAll();
+            });
+
+            $('#rm-ell-popup-auto').on('click', (e) => {
+                e.stopPropagation();
                 const st = Core.getSettings();
                 st.autoRemove = !st.autoRemove;
                 Core.saveSettings();
-                UI.updateQuickButtonState();
+                this.updatePopupMenuState();
+                this.updateQuickButtonState();
+                this.updateDrawerHeaderStatus();
+                // Sync checkbox in settings panel
+                $('#rm-ell-auto').prop('checked', st.autoRemove);
                 UI.notify(`Auto Remove: ${st.autoRemove ? 'ON' : 'OFF'}`);
             });
 
+            $('#rm-ell-popup-engparens').on('click', (e) => {
+                e.stopPropagation();
+                const st = Core.getSettings();
+                st.removeEngParens = !st.removeEngParens;
+                Core.saveSettings();
+                this.updatePopupMenuState();
+                // Sync checkbox in settings panel
+                $('#rm-ell-engparens').prop('checked', st.removeEngParens);
+                UI.notify(`Remove English in ( ): ${st.removeEngParens ? 'ON' : 'OFF'}`);
+            });
+
+            $('#rm-ell-popup-settings').on('click', (e) => {
+                e.stopPropagation();
+                this.hidePopupMenu();
+                // เปิด extensions drawer และ scroll ไปที่ settings
+                this.openExtensionSettings();
+            });
+
+            // ปิด popup เมื่อคลิกที่อื่น
+            $(document).on('click.rmellpopup', (e) => {
+                if (!$(e.target).closest('#rm-ell-quick-btn-wrapper').length) {
+                    this.hidePopupMenu();
+                }
+            });
+
             this.updateQuickButtonState();
+        },
+
+        togglePopupMenu() {
+            const popup = $('#rm-ell-popup-menu');
+            if (popup.hasClass('show')) {
+                this.hidePopupMenu();
+            } else {
+                this.updatePopupMenuState();
+                popup.addClass('show');
+            }
+        },
+
+        hidePopupMenu() {
+            $('#rm-ell-popup-menu').removeClass('show');
+        },
+
+        updatePopupMenuState() {
+            const st = Core.getSettings();
+            // Update Auto Remove status
+            const autoStatus = $('#rm-ell-popup-auto .rm-ell-toggle-status');
+            autoStatus.text(st.autoRemove ? 'ON' : 'OFF');
+            autoStatus.removeClass('on off').addClass(st.autoRemove ? 'on' : 'off');
+            
+            // Update Remove English Parens status
+            const engStatus = $('#rm-ell-popup-engparens .rm-ell-toggle-status');
+            engStatus.text(st.removeEngParens ? 'ON' : 'OFF');
+            engStatus.removeClass('on off').addClass(st.removeEngParens ? 'on' : 'off');
+        },
+
+        openExtensionSettings() {
+            // เปิด extensions panel
+            const extensionsBtn = $('#extensionsMenuButton, #extensions_button, [data-i18n="Extensions"]').first();
+            if (extensionsBtn.length) {
+                extensionsBtn.trigger('click');
+                // รอให้ panel เปิดแล้ว scroll ไปที่ settings
+                setTimeout(() => {
+                    const settingsBlock = $('#remove-ellipsis-settings');
+                    if (settingsBlock.length) {
+                        // เปิด drawer ถ้ายังไม่เปิด
+                        const drawerContent = settingsBlock.find('.inline-drawer-content');
+                        if (drawerContent.css('display') === 'none') {
+                            settingsBlock.find('.inline-drawer-toggle').trigger('click');
+                        }
+                        // Scroll ไปที่ settings block
+                        settingsBlock[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                }, 300);
+            }
         },
 
         updateQuickButtonState() {
@@ -205,10 +326,29 @@
             const st = Core.getSettings();
             if (st.autoRemove) {
                 btn.addClass('rm-ell-auto-active');
-                btn.attr('title', 'Text Cleaner (Auto: ON) - Click to clean, Right-click to toggle auto');
+                btn.attr('title', 'Text Cleaner (Auto: ON) - Click for options');
             } else {
                 btn.removeClass('rm-ell-auto-active');
-                btn.attr('title', 'Text Cleaner (Auto: OFF) - Click to clean, Right-click to toggle auto');
+                btn.attr('title', 'Text Cleaner (Auto: OFF) - Click for options');
+            }
+        },
+
+        updateDrawerHeaderStatus() {
+            const st = Core.getSettings();
+            let statusBadge = $('#rm-ell-header-status');
+            
+            if (!statusBadge.length) {
+                // สร้าง status badge ถ้ายังไม่มี
+                const header = $('#remove-ellipsis-settings .inline-drawer-toggle b');
+                if (header.length) {
+                    header.append(`<span id="rm-ell-header-status" class="rm-ell-header-status ${st.autoRemove ? 'on' : 'off'}">${st.autoRemove ? 'ON' : 'OFF'}</span>`);
+                    statusBadge = $('#rm-ell-header-status');
+                }
+            }
+            
+            if (statusBadge.length) {
+                statusBadge.text(st.autoRemove ? 'ON' : 'OFF');
+                statusBadge.removeClass('on off').addClass(st.autoRemove ? 'on' : 'off');
             }
         }
     };
@@ -354,6 +494,8 @@
             $(document).on('change', '#rm-ell-auto', (e) => {
                 updateSetting('autoRemove', e.target.checked);
                 UI.updateQuickButtonState(); // Sync quick button state
+                UI.updatePopupMenuState(); // Sync popup menu state
+                UI.updateDrawerHeaderStatus(); // Sync header status
                 UI.notify(`Auto Remove: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
             $(document).on('change', '#rm-ell-engparens', (e) => {
@@ -406,9 +548,13 @@
         if (typeof document === 'undefined') return;
         const onReady = () => {
             App.init();
+            // อัปเดต header status หลังจาก inject settings
+            setTimeout(() => UI.updateDrawerHeaderStatus(), 100);
+            
             const obs = new MutationObserver(() => {
                 App.injectSettings();
                 UI.injectQuickButton();
+                UI.updateDrawerHeaderStatus();
             });
             const target = document.querySelector('#content') || document.body;
             obs.observe(target, { childList: true, subtree: true });
