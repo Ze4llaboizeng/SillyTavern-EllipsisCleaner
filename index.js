@@ -197,10 +197,6 @@
                             </span>
                             <span class="rm-ell-toggle-status ${st.removeEngParens ? 'on' : 'off'}">${st.removeEngParens ? 'ON' : 'OFF'}</span>
                         </div>
-                        <div class="rm-ell-popup-divider"></div>
-                        <div class="rm-ell-popup-item" id="rm-ell-popup-settings">
-                            <i class="fa-solid fa-gear"></i> More Settings...
-                        </div>
                     </div>
                 </div>
             `);
@@ -318,13 +314,6 @@
                 UI.notify(`Remove English in ( ): ${st.removeEngParens ? 'ON' : 'OFF'}`);
             });
 
-            $('#rm-ell-popup-settings').on('click', (e) => {
-                e.stopPropagation();
-                this.hidePopupMenu();
-                // เปิด extensions drawer และ scroll ไปที่ settings
-                this.openExtensionSettings();
-            });
-
             // ปิด popup เมื่อคลิกที่อื่น
             $(document).on('click.rmellpopup', (e) => {
                 if (!$(e.target).closest('#rm-ell-quick-btn-wrapper').length) {
@@ -361,44 +350,6 @@
             engStatus.text(st.removeEngParens ? 'ON' : 'OFF');
             engStatus.removeClass('on off').addClass(st.removeEngParens ? 'on' : 'off');
         },
-
-        openExtensionSettings() {
-            // เปิด Extensions Menu popup (ปุ่ม 🧩 ใกล้ช่องพิมพ์) แล้ว scroll ไปที่ entry ของ extension นี้
-            const menuButton = $('#extensionsMenuButton').first();
-            const extMenu = $('#extensionsMenu');
-
-            // ตรวจว่า menu visible หรือยัง
-            const isMenuVisible = extMenu.length && extMenu.is(':visible');
-            if (!isMenuVisible && menuButton.length) {
-                menuButton.trigger('click');
-            }
-
-            const scrollToEntry = (attempt = 0) => {
-                // ให้แน่ใจว่า entry ของเราถูก inject เข้า extensions menu แล้ว
-                if (typeof App !== 'undefined' && App.injectExtensionsMenuEntry) {
-                    App.injectExtensionsMenuEntry();
-                }
-                const entry = $('#rm-ell-extmenu-entry');
-                if (!entry.length) {
-                    if (attempt < 6) {
-                        setTimeout(() => scrollToEntry(attempt + 1), 150);
-                    }
-                    return;
-                }
-                // Scroll & highlight
-                try {
-                    entry[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-                } catch (_) {
-                    entry[0].scrollIntoView();
-                }
-                entry.addClass('rm-ell-highlight');
-                setTimeout(() => entry.removeClass('rm-ell-highlight'), 1600);
-            };
-
-            // รอให้ menu render เสร็จก่อนค่อย scroll
-            setTimeout(() => scrollToEntry(0), 200);
-        },
-
 
         updateQuickButtonState() {
             const btn = $('#rm-ell-quick-btn');
@@ -579,42 +530,6 @@
             `);
         },
 
-        // Inject เข้า Extensions Menu popup (ปุ่ม 🧩 ใกล้ช่องพิมพ์)
-        injectExtensionsMenuEntry() {
-            if (typeof $ === 'undefined') return;
-            if ($('#rm-ell-extmenu-entry').length > 0) return;
-
-            const menu = $('#extensionsMenu');
-            if (!menu.length) return;
-
-            // สร้าง entry แบบ collapsible เพื่อไม่ให้กิน space ใน popup
-            const entry = $(`
-                <div id="rm-ell-extmenu-entry" class="extension_container interactable">
-                    <div class="rm-ell-extmenu-header list-group-item flex-container flexGap5 interactable" tabindex="0">
-                        <i class="fa-solid fa-broom"></i>
-                        <span style="flex:1;"><b>Text Cleaner Ext</b></span>
-                        <i class="rm-ell-extmenu-caret fa-solid fa-chevron-down"></i>
-                    </div>
-                    <div class="rm-ell-extmenu-body rm-ell-panel-body" style="display:none; padding: 8px 12px;">
-                        ${this.buildSettingsPanelHtml('extmenu-')}
-                    </div>
-                </div>
-            `);
-
-            menu.append(entry);
-
-            // toggle expand/collapse
-            entry.find('.rm-ell-extmenu-header').on('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                const body = entry.find('.rm-ell-extmenu-body');
-                const caret = entry.find('.rm-ell-extmenu-caret');
-                const visible = body.is(':visible');
-                body.toggle(!visible);
-                caret.toggleClass('fa-chevron-down', visible).toggleClass('fa-chevron-up', !visible);
-            });
-        },
-
         bindEvents() {
 
             if (this._eventsBound) return;
@@ -720,9 +635,6 @@
                     // ทำงานเฉพาะเมื่อยังไม่มีองค์ประกอบเหล่านี้ หรือสถานะเปลี่ยน
                     if (!document.getElementById('remove-ellipsis-settings')) {
                         App.injectSettings();
-                    }
-                    if (!document.getElementById('rm-ell-extmenu-entry')) {
-                        App.injectExtensionsMenuEntry();
                     }
                     if (!document.getElementById('rm-ell-quick-btn')) {
                         UI.injectQuickButton();

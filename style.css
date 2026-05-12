@@ -24,12 +24,12 @@
     height: 40px;
     padding: 0;
     border-radius: 50%;
-    background: var(--blackA40, #eef1f4);
+    background: transparent;
     color: var(--text-main, #222);
-    border: 1px solid var(--SmartThemeBorderColor, #c4c7cc);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    border: none;
+    box-shadow: none;
     cursor: pointer;
-    transition: background 0.2s ease, transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+    transition: transform 0.15s ease, box-shadow 0.2s ease;
     margin: 0 5px;
     user-select: none;
     -webkit-user-select: none;
@@ -59,7 +59,7 @@
 }
 
 #rm-ell-quick-btn:hover {
-    background: var(--blackA60, #e4e8ed);
+    background: transparent;
     transform: translateY(-1px);
 }
 
@@ -67,11 +67,12 @@
     transform: scale(0.95);
 }
 
+/* เมื่อ Auto Remove เปิดอยู่ — แสดงด้วย ring สีเขียวรอบ emoji แทนพื้นหลังเต็ม */
 #rm-ell-quick-btn.rm-ell-auto-active {
-    background: var(--green-50, #3c8d51) !important;
-    color: var(--white, #fff) !important;
-    border-color: var(--green-60, #2f6f40) !important;
-    box-shadow: 0 1px 3px rgba(60, 141, 81, 0.35);
+    background: transparent !important;
+    color: inherit !important;
+    border: none !important;
+    box-shadow: 0 0 0 2px var(--green-50, #3c8d51);
 }
 
 /* แสดงผลตอนกำลังกดค้าง (long-press progress) */
@@ -301,78 +302,3 @@
     100% { box-shadow: 0 0 0 0 rgba(74, 144, 226, 0); }
 }
 
-/* ============================================================
-   EXTENSIONS MENU ENTRY (popup ใกล้ช่องพิมพ์ — ปุ่ม 🧩)
-   ============================================================ */
-#rm-ell-extmenu-entry {
-    display: block;
-    margin: 4px 0;
-    border-radius: 8px;
-    overflow: hidden;
-    border: 1px solid var(--SmartThemeBorderColor, #3a3f47);
-    background: var(--black30a, rgba(0, 0, 0, 0.15));
-}
-
-#rm-ell-extmenu-entry .rm-ell-extmenu-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    cursor: pointer;
-    user-select: none;
-    -webkit-user-select: none;
-    transition: background 0.15s ease;
-    font-size: 0.95em;
-}
-
-#rm-ell-extmenu-entry .rm-ell-extmenu-header:hover {
-    background: var(--blackA40, rgba(255, 255, 255, 0.06));
-}
-
-#rm-ell-extmenu-entry .rm-ell-extmenu-header > i:first-child {
-    color: var(--SmartThemeQuoteColor, #8ab4f8);
-}
-
-#rm-ell-extmenu-entry .rm-ell-extmenu-caret {
-    font-size: 0.85em;
-    opacity: 0.7;
-    transition: transform 0.2s ease;
-}
-
-#rm-ell-extmenu-entry .rm-ell-extmenu-body {
-    padding: 10px 12px 12px;
-    border-top: 1px solid var(--SmartThemeBorderColor, #3a3f47);
-    background: var(--SmartThemeBlurTintColor, rgba(0, 0, 0, 0.1));
-}
-
-#rm-ell-extmenu-entry .rm-ell-extmenu-body .checkbox_label {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 4px 0;
-    cursor: pointer;
-}
-
-#rm-ell-extmenu-entry .rm-ell-extmenu-body hr {
-    margin: 8px 0;
-    border: none;
-    border-bottom: 1px solid var(--SmartThemeBorderColor, #3a3f47);
-    opacity: 0.5;
-}
-
-#rm-ell-extmenu-entry .rm-ell-extmenu-body .styled_description_block {
-    margin-bottom: 0.6rem;
-    color: var(--SmartThemeQuoteColor, #7b838b);
-    font-size: 0.85em;
-}
-
-#rm-ell-extmenu-entry .rm-ell-extmenu-body .menu_button {
-    padding: 6px 10px;
-    text-align: center;
-    border-radius: 6px;
-}
-
-/* highlight effect เมื่อ scroll ไปที่ entry นี้จากปุ่ม More Settings */
-#rm-ell-extmenu-entry.rm-ell-highlight {
-    animation: rmEllHighlight 1.5s ease;
-}
