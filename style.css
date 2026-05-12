@@ -1,5 +1,3 @@
-/* Remove Ellipsis - Extension Styling (Native SillyTavern Theme) */
-/* ลบการตกแต่งทิ้งทั้งหมด เพื่อให้ใช้ CSS หลักของ SillyTavern ได้อย่างสมบูรณ์ */
 
 #remove-ellipsis-settings {
     width: 100%;
@@ -7,117 +5,45 @@
     margin-bottom: 10px;
 }
 
-.rm-ell-quick-btn {
+
+#rm-ell-quick-btn {
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 38px;
     height: 38px;
     border-radius: 50%;
-    background: var(--grey-10, #eef1f4);
+    background: var(--blackA40, #eef1f4);
     color: var(--text-main, #222);
-    border: 1px solid var(--grey-40, #c4c7cc);
+    border: 1px solid var(--SmartThemeBorderColor, #c4c7cc);
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
     cursor: pointer;
     transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+    margin: 0 5px; 
 }
 
-.rm-ell-quick-btn:hover {
-    background: var(--grey-15, #e4e8ed);
+#rm-ell-quick-btn:hover {
+    background: var(--blackA60, #e4e8ed);
     transform: translateY(-1px);
 }
 
-.rm-ell-auto-active {
-    background: var(--green-50, #3c8d51);
+#rm-ell-quick-btn.rm-ell-auto-active {
+    background: var(--green-50, #3c8d51) !important;
     color: var(--white, #fff) !important;
     border-color: var(--green-60, #2f6f40) !important;
 }
 
-#remove-ellipsis-settings .extension_settings_block {
-    width: 100%;
-}
-
-#remove-ellipsis-settings .inline-drawer {
-    border: 1px solid var(--grey-40, #c4c7cc);
-    border-radius: 12px;
-    overflow: hidden;
-    background: var(--bg-main, #fff);
-}
-
-#remove-ellipsis-settings .inline-drawer-toggle {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 0.75rem;
-    padding: 0.9rem 1rem;
-    cursor: pointer;
-    color: var(--text-main, #222);
-    user-select: none;
-}
-
-#remove-ellipsis-settings .inline-drawer-toggle b {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-#remove-ellipsis-settings .inline-drawer-icon {
-    font-size: 0.95rem;
-    color: var(--grey-30, #6d7680);
-    transition: transform 0.2s ease;
-}
-
-#remove-ellipsis-settings .inline-drawer-content {
-    padding: 1rem 1rem 0.9rem;
-    display: none;
-    background: transparent;
-}
-
-#remove-ellipsis-settings .checkbox_label {
-    display: flex;
-    align-items: center;
-    gap: 0.65rem;
-    margin: 0.45rem 0;
-    cursor: pointer;
-    color: var(--text-main, #222);
-    font-size: 0.95rem;
-}
-
-#remove-ellipsis-settings .checkbox_label input[type="checkbox"] {
-    width: 18px;
-    height: 18px;
-    accent-color: var(--smart-blue, #4f7fff);
-}
-
-#remove-ellipsis-settings .menu_button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.55rem;
-    padding: 0.75rem 0.9rem;
-    border-radius: 10px;
-    border: 1px solid var(--grey-40, #c4c7cc);
-    background: var(--bg-secondary, #f8f9fb);
-    color: var(--text-main, #222);
-    font-weight: 600;
-    cursor: pointer;
-    transition: background 0.2s ease, border-color 0.2s ease;
-}
-
-#remove-ellipsis-settings .menu_button:hover {
-    background: var(--grey-10, #eef1f4);
-    border-color: var(--grey-50, #a9afb6);
-}
 
 #remove-ellipsis-settings .styled_description_block {
     margin-bottom: 0.9rem;
-    color: var(--grey-40, #7b838b);
-    font-size: 0.9rem;
+    color: var(--SmartThemeQuoteColor, #7b838b);
+    font-size: 0.9em;
+    padding: 0 5px;
 }
 
 #remove-ellipsis-settings hr {
     margin: 10px 0;
     border: none;
-    border-bottom: 1px solid var(--grey-30, #d1d6dc);
+    border-bottom: 1px solid var(--SmartThemeBorderColor, #d1d6dc);
     opacity: 0.5;
 }
