@@ -13,15 +13,26 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    align-self: center;       /* ไม่ stretch ตามความสูงของ send_form */
+    flex: 0 0 auto;
+    height: auto;
+    vertical-align: middle;
 }
 
 #rm-ell-quick-btn {
+    /* ทรงกลมแน่นอน — ใช้ aspect-ratio + flex-shrink:0 กันถูกบีบเป็นวงรี */
     display: inline-flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    width: 40px;
-    height: 40px;
+    width: 32px;
+    height: 32px;
+    min-width: 32px;
+    min-height: 32px;
+    max-width: 32px;
+    max-height: 32px;
+    aspect-ratio: 1 / 1;
+    flex: 0 0 32px;
     padding: 0;
     border-radius: 50%;
     background: transparent;
@@ -29,14 +40,16 @@
     border: none;
     box-shadow: none;
     cursor: pointer;
-    transition: transform 0.15s ease, box-shadow 0.2s ease;
-    margin: 0 5px;
+    /* transition เฉพาะ box-shadow + background — ไม่แตะ transform เพื่อกันปุ่มลอยล้ำแถบพิมพ์ */
+    transition: background 0.15s ease, box-shadow 0.2s ease, transform 0.1s ease;
+    margin: 0 4px;
     user-select: none;
     -webkit-user-select: none;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
     line-height: 1;
     overflow: hidden;
+    vertical-align: middle;
 }
 
 /* ไอคอน emoji ภายในปุ่ม — ทำให้แสดงผลพอดี ไม่ถูกบีบอัด */
@@ -46,7 +59,7 @@
     justify-content: center;
     width: 100%;
     height: 100%;
-    font-size: 20px;
+    font-size: 18px;
     line-height: 1;
     /* fallback fonts สำหรับ emoji ทุก platform */
     font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji",
@@ -55,31 +68,34 @@
     font-variant-emoji: emoji;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
-    transform: translateY(-0.5px); /* จัดแนวกึ่งกลางในวงกลม */
+    /* ไม่ใช้ translateY กับ emoji เพราะทำให้ดูเอียงลง — ใช้ flex center พอ */
 }
 
+/* hover: แค่เปลี่ยนพื้นหลังเบา ๆ ไม่เลื่อนตำแหน่งปุ่ม (กันล้ำแถบพิมพ์) */
 #rm-ell-quick-btn:hover {
-    background: transparent;
-    transform: translateY(-1px);
+    background: var(--white30a, rgba(255, 255, 255, 0.08));
+    transform: none;
 }
 
 #rm-ell-quick-btn:active {
-    transform: scale(0.95);
+    transform: scale(0.92);
 }
 
-/* เมื่อ Auto Remove เปิดอยู่ — แสดงด้วย ring สีเขียวรอบ emoji แทนพื้นหลังเต็ม */
+/* เมื่อ Auto Remove เปิดอยู่ — แสดงด้วย ring สีเขียวรอบ emoji แทนพื้นหลังเต็ม
+   ใช้ inset box-shadow เพื่อไม่ขยายขนาดปุ่ม (กันออกนอกขอบแถบพิมพ์) */
 #rm-ell-quick-btn.rm-ell-auto-active {
     background: transparent !important;
     color: inherit !important;
     border: none !important;
-    box-shadow: 0 0 0 2px var(--green-50, #3c8d51);
+    box-shadow: inset 0 0 0 2px var(--green-50, #3c8d51);
 }
 
-/* แสดงผลตอนกำลังกดค้าง (long-press progress) */
+/* แสดงผลตอนกำลังกดค้าง (long-press progress) — ใช้ inset เช่นกัน */
 #rm-ell-quick-btn.rm-ell-pressing {
-    box-shadow: 0 0 0 3px var(--SmartThemeQuoteColor, #4a90e2);
+    box-shadow: inset 0 0 0 2px var(--SmartThemeQuoteColor, #4a90e2);
     transform: scale(0.95);
 }
+
 
 
 /* ============================================================
@@ -206,10 +222,18 @@
    ------------------------------------------------------------ */
 @media (max-width: 600px) {
     #rm-ell-quick-btn {
-        width: 36px;
-        height: 36px;
+        width: 30px;
+        height: 30px;
+        min-width: 30px;
+        min-height: 30px;
+        max-width: 30px;
+        max-height: 30px;
+        flex: 0 0 30px;
         font-size: 15px;
-        margin: 0 4px;
+        margin: 0 3px;
+    }
+    #rm-ell-quick-btn .rm-ell-quick-btn-emoji {
+        font-size: 16px;
     }
     .rm-ell-popup-menu {
         font-size: 15px;
