@@ -153,6 +153,63 @@
 
         closeDrawer() {
             if (typeof $ !== 'undefined') $('.drawer-overlay').trigger('click');
+        },
+
+        // ปุ่มลัดใกล้ช่องพิมพ์ข้อความ
+        injectQuickButton() {
+            if (typeof $ === 'undefined') return;
+            if ($('#rm-ell-quick-btn').length > 0) return;
+
+            // หา container ใกล้ช่องพิมพ์ข้อความ
+            const sendForm = $('#send_form');
+            if (!sendForm.length) return;
+
+            // สร้างปุ่มลัด
+            const quickBtn = $(`
+                <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" title="Text Cleaner - Click to clean, Right-click for options">
+                    <i class="fa-solid fa-broom"></i>
+                </div>
+            `);
+
+            // แทรกปุ่มก่อน send_but หรือท้าย send_form
+            const sendBut = $('#send_but');
+            if (sendBut.length) {
+                sendBut.before(quickBtn);
+            } else {
+                sendForm.append(quickBtn);
+            }
+
+            // Event handlers
+            quickBtn.on('click', async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                await App.removeAll();
+            });
+
+            // Right-click เพื่อ toggle Auto mode
+            quickBtn.on('contextmenu', (e) => {
+                e.preventDefault();
+                const st = Core.getSettings();
+                st.autoRemove = !st.autoRemove;
+                Core.saveSettings();
+                UI.updateQuickButtonState();
+                UI.notify(`Auto Remove: ${st.autoRemove ? 'ON' : 'OFF'}`);
+            });
+
+            this.updateQuickButtonState();
+        },
+
+        updateQuickButtonState() {
+            const btn = $('#rm-ell-quick-btn');
+            if (!btn.length) return;
+            const st = Core.getSettings();
+            if (st.autoRemove) {
+                btn.addClass('rm-ell-auto-active');
+                btn.attr('title', 'Text Cleaner (Auto: ON) - Click to clean, Right-click to toggle auto');
+            } else {
+                btn.removeClass('rm-ell-auto-active');
+                btn.attr('title', 'Text Cleaner (Auto: OFF) - Click to clean, Right-click to toggle auto');
+            }
         }
     };
 
@@ -296,6 +353,7 @@
 
             $(document).on('change', '#rm-ell-auto', (e) => {
                 updateSetting('autoRemove', e.target.checked);
+                UI.updateQuickButtonState(); // Sync quick button state
                 UI.notify(`Auto Remove: ${e.target.checked ? 'ON' : 'OFF'}`);
             });
             $(document).on('change', '#rm-ell-engparens', (e) => {
@@ -340,6 +398,7 @@
                 });
             }
             this.injectSettings();
+            UI.injectQuickButton();
         }
     };
 
@@ -347,7 +406,10 @@
         if (typeof document === 'undefined') return;
         const onReady = () => {
             App.init();
-            const obs = new MutationObserver(() => App.injectSettings());
+            const obs = new MutationObserver(() => {
+                App.injectSettings();
+                UI.injectQuickButton();
+            });
             const target = document.querySelector('#content') || document.body;
             obs.observe(target, { childList: true, subtree: true });
         };
