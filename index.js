@@ -1,22 +1,92 @@
-/* Remove Ellipsis — Instant UI Update & Thai-English Bracket Removal */
+/* Remove Ellipsis — Instant UI Update & Thai-English Bracket Removal
+ * Refactored: schema-driven settings, debounced observer, race-condition lock,
+ * unified toggle logic, undo support, per-message clean button.
+ */
 (() => {
     if (typeof window === 'undefined') { global.window = {}; }
     if (window.__REMOVE_ELLIPSIS_EXT_LOADED__) return;
     window.__REMOVE_ELLIPSIS_EXT_LOADED__ = true;
 
     // ========================================================================
-    // MODULE: Constants & Defaults
+    // MODULE: Constants & Schema
     // ========================================================================
     const MODULE_NAME = 'removeEllipsisExt';
-    const DEFAULTS = { 
-        autoRemove: false, 
-        removeAllDots: false, 
-        treatTwoDots: false,
-        preserveSpace: true,
-        protectCode: true,
-        notifications: true,
-        removeEngParens: false 
-    };
+
+    /**
+     * SETTINGS_SCHEMA — single source of truth for every toggle.
+     * Adding a new setting = add one entry here only.
+     *
+     * Fields:
+     *   key        {string}  — storage key
+     *   default    {boolean} — default value
+     *   label      {string}  — display label
+     *   icon       {string}  — FontAwesome class
+     *   inPopup    {boolean} — show in quick-button popup?
+     *   warning    {string?} — optional toastr warning on enable
+     *   title      {string?} — tooltip text
+     */
+    const SETTINGS_SCHEMA = [
+        {
+            key: 'autoRemove',
+            default: false,
+            label: 'Auto Remove (After Generation)',
+            icon: 'fa-solid fa-robot',
+            inPopup: true,
+            title: 'ลบอัตโนมัติหลังจาก AI สร้างข้อความ'
+        },
+        {
+            key: 'removeEngParens',
+            default: false,
+            label: 'Remove English in ( )',
+            icon: 'fa-solid fa-language',
+            inPopup: true,
+            highlight: true,
+            title: 'ลบวงเล็บภาษาอังกฤษที่ตามหลังภาษาไทย เช่น แชท(chat) → แชท'
+        },
+        {
+            key: 'removeAllDots',
+            default: false,
+            label: 'Remove ALL Dots (.)',
+            icon: 'fa-solid fa-ellipsis',
+            inPopup: false,
+            warning: 'Warning: Will remove ALL periods including sentence endings!'
+        },
+        {
+            key: 'treatTwoDots',
+            default: false,
+            label: 'Remove ".."',
+            icon: 'fa-solid fa-minus',
+            inPopup: false,
+            title: 'ลบจุดสองจุด (..) ด้วย ไม่ใช่แค่สามจุด'
+        },
+        {
+            key: 'protectCode',
+            default: true,
+            label: 'Protect Code & HTML',
+            icon: 'fa-solid fa-shield-halved',
+            inPopup: false,
+            title: 'ไม่แตะโค้ด, HTML tags, script และ style blocks'
+        },
+        {
+            key: 'preserveSpace',
+            default: true,
+            label: 'Preserve Space',
+            icon: 'fa-solid fa-text-width',
+            inPopup: false,
+            title: 'แทนที่จุดด้วย space แทนที่จะลบทิ้งเลย'
+        },
+        {
+            key: 'notifications',
+            default: true,
+            label: 'Show Notifications',
+            icon: 'fa-solid fa-bell',
+            inPopup: false,
+            title: 'แสดงแจ้งเตือนเมื่อทำการลบ'
+        },
+    ];
+
+    // Build DEFAULTS from schema
+    const DEFAULTS = Object.fromEntries(SETTINGS_SCHEMA.map(s => [s.key, s.default]));
 
     // ========================================================================
     // MODULE: Core
@@ -25,16 +95,19 @@
         getContext() {
             try { return window.SillyTavern?.getContext?.() || null; } catch (_) { return null; }
         },
+
         getSettings() {
             const ctx = this.getContext();
             if (!ctx) return structuredClone(DEFAULTS);
             const store = ctx.extensionSettings || (ctx.extensionSettings = {});
             if (!store[MODULE_NAME]) store[MODULE_NAME] = {};
+            // Fill missing keys from defaults
             for (const key of Object.keys(DEFAULTS)) {
                 if (!(key in store[MODULE_NAME])) store[MODULE_NAME][key] = DEFAULTS[key];
             }
             return store[MODULE_NAME];
         },
+
         saveSettings() {
             const ctx = this.getContext();
             if (ctx?.saveSettingsDebounced) ctx.saveSettingsDebounced();
@@ -43,9 +116,38 @@
     };
 
     // ========================================================================
+    // MODULE: Undo Stack
+    // ========================================================================
+    const UndoStack = {
+        _stack: [],
+        MAX: 1,
+
+        push(snapshot) {
+            this._stack.push(snapshot);
+            if (this._stack.length > this.MAX) this._stack.shift();
+        },
+
+        pop() {
+            return this._stack.pop() || null;
+        },
+
+        canUndo() {
+            return this._stack.length > 0;
+        },
+
+        clear() {
+            this._stack = [];
+        }
+    };
+
+    // ========================================================================
     // MODULE: Cleaner
     // ========================================================================
     const Cleaner = {
+        /**
+         * Clean a single string.
+         * @returns {{ text: string, removed: number }}
+         */
         cleanText(text, settings) {
             if (typeof text !== 'string' || !text) return { text, removed: 0 };
 
@@ -53,11 +155,14 @@
             let processed = text;
             let removedCount = 0;
 
+            // --- Protect code/HTML blocks ---
             if (settings.protectCode) {
                 const mask = (regex) => {
-                    processed = processed.replace(regex, m => `@@PT${protectedItems.push(m) - 1}@@`);
+                    processed = processed.replace(
+                        regex,
+                        m => `@@PT${protectedItems.push(m) - 1}@@`
+                    );
                 };
-
                 mask(/```[\s\S]*?```/g);
                 mask(/`[^`]*`/g);
                 mask(/<script\b[^>]*>[\s\S]*?<\/script>/gi);
@@ -67,70 +172,94 @@
                 mask(/<[^>]+>/g);
             }
 
+            // --- Remove English in parentheses after Thai ---
             if (settings.removeEngParens) {
-                const engParenRegex = /([\u0E00-\u0E7F][*_"']*)(\s*\([^)]*[A-Za-z][^)]*\))/g;
-                processed = processed.replace(engParenRegex, (match, g1, g2) => {
-                    removedCount += g2.length;
-                    return g1; 
+                // Improved: allow optional space/punctuation between Thai and paren
+                // e.g. แชท(chat), แชท (chat), แชท — (chat), แชท: (chat)
+                const engParenRegex = /([\u0E00-\u0E7F][*_"']*)\s*(?:[^\w\s\u0E00-\u0E7F]{0,3}\s*)(\([^)]*[A-Za-z][^)]*\))/g;
+                processed = processed.replace(engParenRegex, (match, thaiPart, parenPart) => {
+                    removedCount++;  // count brackets removed, not characters
+                    return thaiPart;
                 });
             }
 
+            // --- Build ellipsis pattern ---
             let patternSource;
             if (settings.removeAllDots) {
-                patternSource = "\\.+|…";
+                patternSource = '\\.+|…';
+            } else if (settings.treatTwoDots) {
+                patternSource = '(?<!\\d)\\.{2,}(?!\\d)|…';
             } else {
-                patternSource = settings.treatTwoDots ? "(?<!\\d)\\.{2,}(?!\\d)|…" : "(?<!\\d)\\.{3,}(?!\\d)|…";
+                patternSource = '(?<!\\d)\\.{3,}(?!\\d)|…';
             }
+
             const baseRegex = new RegExp(patternSource, 'g');
 
-            const specialAfter = new RegExp(`(?:${patternSource})[ \t]*(?=[*"'])`, 'g');
-            const specialBefore = new RegExp(`(?<=[*"'])(?:${patternSource})[ \t]*`, 'g');
-            
+            // Handle ellipsis adjacent to markdown markers (* " ')
+            const specialAfterRx  = new RegExp(`(?:${patternSource})[ \\t]*(?=[*"'])`, 'g');
+            const specialBeforeRx = new RegExp(`(?<=[*"'])(?:${patternSource})[ \\t]*`, 'g');
+
             processed = processed
-                .replace(specialBefore, m => { removedCount += m.length; return ''; })
-                .replace(specialAfter, m => { removedCount += m.length; return ''; });
+                .replace(specialBeforeRx, m => { removedCount++; return ''; })
+                .replace(specialAfterRx,  m => { removedCount++; return ''; });
 
-            const mainPattern = settings.preserveSpace ? baseRegex : new RegExp(`(?:${patternSource})[ \t]*`, 'g');
+            // Main replacement
+            const mainRegex = settings.preserveSpace
+                ? baseRegex
+                : new RegExp(`(?:${patternSource})[ \\t]*`, 'g');
 
-            processed = processed.replace(mainPattern, (match, offset, fullStr) => {
-                removedCount += match.length;
+            processed = processed.replace(mainRegex, (match, offset, fullStr) => {
+                removedCount++;
                 if (!settings.preserveSpace) return '';
                 const prev = fullStr[offset - 1];
                 const next = fullStr[offset + match.length];
-                const hasSpaceBefore = prev === undefined ? true : /\s/.test(prev);
-                const hasSpaceAfter = next === undefined ? true : /\s/.test(next);
-                if (hasSpaceBefore || hasSpaceAfter) return '';
-                return ' '; 
+                const hasSpaceBefore = prev === undefined || /\s/.test(prev);
+                const hasSpaceAfter  = next === undefined || /\s/.test(next);
+                return (hasSpaceBefore || hasSpaceAfter) ? '' : ' ';
             });
 
+            // Restore protected items
             if (settings.protectCode) {
-                processed = processed.replace(/@@PT(\d+)@@/g, (_, i) => protectedItems[i]);
+                processed = processed.replace(/@@PT(\d+)@@/g, (_, i) => protectedItems[+i]);
             }
 
             return { text: processed, removed: removedCount };
         },
 
-        cleanMessage(msg) {
+        /**
+         * Clean a single chat message object in-place.
+         * @returns {number} count of items removed
+         */
+        cleanMessage(msg, settings) {
             if (!msg) return 0;
-            const settings = Core.getSettings();
+            settings = settings || Core.getSettings();
             let total = 0;
-            
+
             if (typeof msg.mes === 'string') {
                 const r = this.cleanText(msg.mes, settings);
-                if (r.removed > 0) {
-                    msg.mes = r.text;
-                    total += r.removed;
-                }
+                if (r.removed > 0) { msg.mes = r.text; total += r.removed; }
             }
 
             if (msg.extra && typeof msg.extra.display_text === 'string') {
                 const r = this.cleanText(msg.extra.display_text, settings);
-                if (r.removed > 0) {
-                    msg.extra.display_text = r.text;
+                if (r.removed > 0) { msg.extra.display_text = r.text; }
+            }
+
+            return total;
+        },
+
+        /**
+         * Scan chat without modifying — returns count only.
+         */
+        countAll(chat, settings) {
+            settings = settings || Core.getSettings();
+            let count = 0;
+            for (const msg of chat) {
+                if (typeof msg.mes === 'string') {
+                    count += this.cleanText(msg.mes, settings).removed;
                 }
             }
-            
-            return total;
+            return count;
         }
     };
 
@@ -139,7 +268,7 @@
     // ========================================================================
     const UI = {
         notify(msg, type = 'info') {
-            if (!Core.getSettings().notifications) return; 
+            if (!Core.getSettings().notifications) return;
             if (typeof toastr !== 'undefined' && toastr[type]) toastr[type](msg, 'Cleaner Ext');
             else console.log(`[CleanerExt] ${msg}`);
         },
@@ -148,18 +277,101 @@
             if (typeof $ !== 'undefined') $('.drawer-overlay').trigger('click');
         },
 
-        injectQuickButton() {
-            if (typeof $ === 'undefined') return;
-            if ($('#rm-ell-quick-btn').length > 0) return;
-
-            const sendForm = $('#send_form');
-            if (!sendForm.length) return;
-
+        // ----------------------------------------------------------------
+        // Sync ALL UI elements from current settings (single source of truth)
+        // ----------------------------------------------------------------
+        syncAll() {
             const st = Core.getSettings();
 
-            const quickBtn = $(`
+            // Drawer checkboxes
+            for (const def of SETTINGS_SCHEMA) {
+                $(`.rm-ell-input-${def.key}`).each((_, el) => {
+                    if (el.checked !== st[def.key]) el.checked = st[def.key];
+                });
+            }
+
+            this.updateQuickButtonState();
+            this.updatePopupMenuState();
+            this.updateDrawerHeaderStatus();
+            this.updateUndoButtons();
+        },
+
+        updateQuickButtonState() {
+            const btn = $('#rm-ell-quick-btn');
+            if (!btn.length) return;
+            const st = Core.getSettings();
+            btn.toggleClass('rm-ell-auto-active', !!st.autoRemove);
+        },
+
+        updatePopupMenuState() {
+            const st = Core.getSettings();
+            for (const def of SETTINGS_SCHEMA) {
+                if (!def.inPopup) continue;
+                const statusEl = $(`#rm-ell-popup-${def.key} .rm-ell-toggle-status`);
+                if (!statusEl.length) continue;
+                const val = !!st[def.key];
+                statusEl.text(val ? 'ON' : 'OFF').removeClass('on off').addClass(val ? 'on' : 'off');
+            }
+        },
+
+        updateDrawerHeaderStatus() {
+            const st = Core.getSettings();
+            const val = !!st.autoRemove;
+            const text = val ? 'ON' : 'OFF';
+            const cls  = val ? 'on' : 'off';
+
+            let badge = document.getElementById('rm-ell-header-status');
+            if (!badge) {
+                const header = document.querySelector('#remove-ellipsis-settings .inline-drawer-toggle b');
+                if (!header) return;
+                badge = document.createElement('span');
+                badge.id = 'rm-ell-header-status';
+                header.appendChild(badge);
+            }
+            badge.textContent = text;
+            badge.className = `rm-ell-header-status ${cls}`;
+        },
+
+        updateUndoButtons() {
+            const can = UndoStack.canUndo();
+            $('.rm-ell-btn-undo').toggleClass('rm-ell-btn-disabled', !can);
+        },
+
+        // ----------------------------------------------------------------
+        // Popup menu
+        // ----------------------------------------------------------------
+        togglePopupMenu() {
+            const popup = $('#rm-ell-popup-menu');
+            popup.hasClass('show') ? this.hidePopupMenu() : (() => {
+                this.updatePopupMenuState();
+                popup.addClass('show');
+            })();
+        },
+
+        hidePopupMenu() {
+            $('#rm-ell-popup-menu').removeClass('show');
+        },
+
+        // ----------------------------------------------------------------
+        // Build the quick-button popup HTML from schema
+        // ----------------------------------------------------------------
+        _buildPopupHTML() {
+            const st = Core.getSettings();
+            const popupItems = SETTINGS_SCHEMA.filter(d => d.inPopup).map(def => {
+                const val = !!st[def.key];
+                return `
+                    <div class="rm-ell-popup-item rm-ell-popup-toggle" id="rm-ell-popup-${def.key}" data-key="${def.key}">
+                        <span class="rm-ell-toggle-label">
+                            <i class="${def.icon}"></i> ${def.label}
+                        </span>
+                        <span class="rm-ell-toggle-status ${val ? 'on' : 'off'}">${val ? 'ON' : 'OFF'}</span>
+                    </div>`;
+            }).join('');
+
+            return `
                 <div id="rm-ell-quick-btn-wrapper" class="rm-ell-quick-btn-wrapper">
-                    <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" role="button" aria-label="Text Cleaner: tap to clean, hold for options">
+                    <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" role="button"
+                         aria-label="Text Cleaner: tap to clean, hold for options">
                         <span class="rm-ell-quick-btn-emoji" aria-hidden="true">📝</span>
                     </div>
                     <div id="rm-ell-popup-menu" class="rm-ell-popup-menu">
@@ -169,56 +381,100 @@
                         <div class="rm-ell-popup-item" id="rm-ell-popup-clean">
                             <i class="fa-solid fa-wand-magic-sparkles"></i> Clean Now
                         </div>
+                        <div class="rm-ell-popup-item" id="rm-ell-popup-undo" data-undo>
+                            <i class="fa-solid fa-rotate-left"></i> Undo
+                        </div>
                         <div class="rm-ell-popup-item" id="rm-ell-popup-check">
                             <i class="fa-solid fa-magnifying-glass"></i> Check
                         </div>
                         <div class="rm-ell-popup-divider"></div>
-                        <div class="rm-ell-popup-item rm-ell-popup-toggle" id="rm-ell-popup-auto">
-                            <span class="rm-ell-toggle-label">
-                                <i class="fa-solid fa-robot"></i> Auto Remove
-                            </span>
-                            <span class="rm-ell-toggle-status ${st.autoRemove ? 'on' : 'off'}">${st.autoRemove ? 'ON' : 'OFF'}</span>
-                        </div>
-                        <div class="rm-ell-popup-item rm-ell-popup-toggle" id="rm-ell-popup-engparens">
-                            <span class="rm-ell-toggle-label">
-                                <i class="fa-solid fa-language"></i> Remove ( )
-                            </span>
-                            <span class="rm-ell-toggle-status ${st.removeEngParens ? 'on' : 'off'}">${st.removeEngParens ? 'ON' : 'OFF'}</span>
-                        </div>
+                        ${popupItems}
                     </div>
-                </div>
-            `);
+                </div>`;
+        },
 
+        // ----------------------------------------------------------------
+        // Build drawer settings panel HTML from schema
+        // ----------------------------------------------------------------
+        buildSettingsPanelHtml() {
+            const st = Core.getSettings();
+
+            // Group: first two (auto + engparens) are "primary", rest are "advanced"
+            const primary  = SETTINGS_SCHEMA.filter(d =>  d.inPopup);
+            const advanced = SETTINGS_SCHEMA.filter(d => !d.inPopup);
+
+            const makeCheckbox = (def) => {
+                const labelStyle = def.highlight ? 'color:var(--smart-blue);' : '';
+                const labelWeight = def.highlight ? 'font-weight:bold;' : '';
+                return `
+                    <label class="checkbox_label" ${def.title ? `title="${def.title}"` : ''}>
+                        <input type="checkbox"
+                               class="rm-ell-input-${def.key}"
+                               id="drawer-rm-ell-${def.key}"
+                               ${st[def.key] ? 'checked' : ''} />
+                        <span style="${labelStyle}${labelWeight}">${def.label}</span>
+                    </label>`;
+            };
+
+            return `
+                <div class="styled_description_block">Extension by Zealllll</div>
+
+                ${primary.map(makeCheckbox).join('')}
+
+                <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
+
+                ${advanced.map(makeCheckbox).join('')}
+
+                <div style="display: flex; gap: 8px; margin-top: 15px; flex-wrap: wrap;">
+                    <div class="rm-ell-btn-clean menu_button" style="flex: 1; min-width: 90px;"
+                         title="ลบสิ่งสกปรกในแชทปัจจุบันทันที">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Clean Now
+                    </div>
+                    <div class="rm-ell-btn-undo menu_button rm-ell-btn-disabled" style="flex: 1; min-width: 80px;"
+                         title="เลิกทำการลบครั้งล่าสุด">
+                        <i class="fa-solid fa-rotate-left"></i> Undo
+                    </div>
+                    <div class="rm-ell-btn-check menu_button" style="flex: 1; min-width: 80px;"
+                         title="ตรวจสอบจำนวนที่ต้องลบ">
+                        <i class="fa-solid fa-magnifying-glass"></i> Check
+                    </div>
+                </div>`;
+        },
+
+        // ----------------------------------------------------------------
+        // Inject quick button into send_form
+        // ----------------------------------------------------------------
+        injectQuickButton() {
+            if (typeof $ === 'undefined') return;
+            if ($('#rm-ell-quick-btn').length > 0) return;
+
+            const sendForm = $('#send_form');
+            if (!sendForm.length) return;
+
+            const wrapper = $(this._buildPopupHTML());
             const sendBut = $('#send_but');
-            if (sendBut.length) {
-                sendBut.before(quickBtn);
-            } else {
-                sendForm.append(quickBtn);
-            }
+            if (sendBut.length) sendBut.before(wrapper);
+            else sendForm.append(wrapper);
 
+            // --- Long press logic ---
             const LONG_PRESS_MS = 500;
             const btnEl = document.getElementById('rm-ell-quick-btn');
             let pressTimer = null;
             let longPressFired = false;
             let pressActive = false;
 
-            const clearPressTimer = () => {
-                if (pressTimer) {
-                    clearTimeout(pressTimer);
-                    pressTimer = null;
-                }
-            };
+            const clearTimer = () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } };
 
             const startPress = (e) => {
                 if (e.type === 'mousedown' && e.button !== 0) return;
                 pressActive = true;
                 longPressFired = false;
                 btnEl?.classList.add('rm-ell-pressing');
-                clearPressTimer();
+                clearTimer();
                 pressTimer = setTimeout(() => {
                     longPressFired = true;
                     btnEl?.classList.remove('rm-ell-pressing');
-                    this.togglePopupMenu();
+                    UI.togglePopupMenu();
                     if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }
                 }, LONG_PRESS_MS);
             };
@@ -226,7 +482,7 @@
             const endPress = (e, cancelled = false) => {
                 if (!pressActive) return;
                 pressActive = false;
-                clearPressTimer();
+                clearTimer();
                 btnEl?.classList.remove('rm-ell-pressing');
                 if (cancelled || longPressFired) return;
                 if (e) { try { e.preventDefault(); e.stopPropagation(); } catch (_) {} }
@@ -234,29 +490,26 @@
             };
 
             $('#rm-ell-quick-btn')
-                .on('mousedown', (e) => startPress(e))
-                .on('mouseup', (e) => endPress(e))
-                .on('mouseleave', () => endPress(null, true));
+                .on('mousedown',  e => startPress(e))
+                .on('mouseup',    e => endPress(e))
+                .on('mouseleave', () => endPress(null, true))
+                .on('touchstart', e => startPress(e), { passive: true })
+                .on('touchend',   e => endPress(e))
+                .on('touchcancel',() => endPress(null, true))
+                .on('contextmenu', e => { e.preventDefault(); return false; })
+                .on('click',      e => { e.preventDefault(); e.stopPropagation(); });
 
-            $('#rm-ell-quick-btn')
-                .on('touchstart', (e) => { startPress(e); }, { passive: true })
-                .on('touchend', (e) => endPress(e))
-                .on('touchcancel', () => endPress(null, true));
-
-            $('#rm-ell-quick-btn').on('contextmenu', (e) => {
-                e.preventDefault();
-                return false;
-            });
-
-            $('#rm-ell-quick-btn').on('click', (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-            });
-
+            // Popup action buttons
             $('#rm-ell-popup-clean').on('click', async (e) => {
                 e.stopPropagation();
                 this.hidePopupMenu();
                 await App.removeAll();
+            });
+
+            $('#rm-ell-popup-undo').on('click', async (e) => {
+                e.stopPropagation();
+                this.hidePopupMenu();
+                await App.undo();
             });
 
             $('#rm-ell-popup-check').on('click', async (e) => {
@@ -265,212 +518,29 @@
                 await App.checkAll();
             });
 
-            $('#rm-ell-popup-auto').on('click', (e) => {
+            // Popup toggle buttons (generated from schema)
+            $(document).on('click', '.rm-ell-popup-toggle[data-key]', function(e) {
                 e.stopPropagation();
-                const st = Core.getSettings();
-                st.autoRemove = !st.autoRemove;
-                Core.saveSettings();
-                this.updatePopupMenuState();
-                this.updateQuickButtonState();
-                this.updateDrawerHeaderStatus();
-                $('#rm-ell-auto').prop('checked', st.autoRemove);
-                UI.notify(`Auto Remove: ${st.autoRemove ? 'ON' : 'OFF'}`);
+                const key = $(this).data('key');
+                App.toggleSetting(key);
             });
 
-            $('#rm-ell-popup-engparens').on('click', (e) => {
-                e.stopPropagation();
-                const st = Core.getSettings();
-                st.removeEngParens = !st.removeEngParens;
-                Core.saveSettings();
-                this.updatePopupMenuState();
-                $('#rm-ell-engparens').prop('checked', st.removeEngParens);
-                UI.notify(`Remove English in ( ): ${st.removeEngParens ? 'ON' : 'OFF'}`);
-            });
-
+            // Close popup on outside click
             $(document).on('click.rmellpopup', (e) => {
                 if (!$(e.target).closest('#rm-ell-quick-btn-wrapper').length) {
-                    this.hidePopupMenu();
+                    UI.hidePopupMenu();
                 }
             });
 
             this.updateQuickButtonState();
+            this.updateUndoButtons();
         },
 
-        togglePopupMenu() {
-            const popup = $('#rm-ell-popup-menu');
-            if (popup.hasClass('show')) {
-                this.hidePopupMenu();
-            } else {
-                this.updatePopupMenuState();
-                popup.addClass('show');
-            }
-        },
-
-        hidePopupMenu() {
-            $('#rm-ell-popup-menu').removeClass('show');
-        },
-
-        updatePopupMenuState() {
-            const st = Core.getSettings();
-            const autoStatus = $('#rm-ell-popup-auto .rm-ell-toggle-status');
-            autoStatus.text(st.autoRemove ? 'ON' : 'OFF');
-            autoStatus.removeClass('on off').addClass(st.autoRemove ? 'on' : 'off');
-            
-            const engStatus = $('#rm-ell-popup-engparens .rm-ell-toggle-status');
-            engStatus.text(st.removeEngParens ? 'ON' : 'OFF');
-            engStatus.removeClass('on off').addClass(st.removeEngParens ? 'on' : 'off');
-        },
-
-        updateQuickButtonState() {
-            const btn = $('#rm-ell-quick-btn');
-            if (!btn.length) return;
-            const st = Core.getSettings();
-            btn.removeAttr('title');
-            if (st.autoRemove) {
-                btn.addClass('rm-ell-auto-active');
-            } else {
-                btn.removeClass('rm-ell-auto-active');
-            }
-        },
-
-        updateDrawerHeaderStatus() {
-            const st = Core.getSettings();
-            const desiredText = st.autoRemove ? 'ON' : 'OFF';
-            const desiredClass = st.autoRemove ? 'on' : 'off';
-            let statusBadge = document.getElementById('rm-ell-header-status');
-
-            if (!statusBadge) {
-                const header = document.querySelector('#remove-ellipsis-settings .inline-drawer-toggle b');
-                if (!header) return;
-                const span = document.createElement('span');
-                span.id = 'rm-ell-header-status';
-                span.className = `rm-ell-header-status ${desiredClass}`;
-                span.textContent = desiredText;
-                header.appendChild(span);
-                return;
-            }
-
-            if (statusBadge.textContent !== desiredText) {
-                statusBadge.textContent = desiredText;
-            }
-            const expectedClass = `rm-ell-header-status ${desiredClass}`;
-            if (statusBadge.className !== expectedClass) {
-                statusBadge.className = expectedClass;
-            }
-        }
-    };
-
-    // ========================================================================
-    // MODULE: App
-    // ========================================================================
-    const App = {
-        async removeAll(silent = false) {
-            const ctx = Core.getContext();
-            if (!ctx?.chat) return;
-            
-            let count = 0;
-            let updatedIndexes = [];
-            
-            ctx.chat.forEach((msg, index) => {
-                const removed = Cleaner.cleanMessage(msg);
-                if (removed > 0) {
-                    count += removed;
-                    updatedIndexes.push(index); 
-                }
-            });
-            
-            if (updatedIndexes.length > 0) {
-                updatedIndexes.forEach(index => {
-                    if (typeof window.updateMessageBlock === 'function') {
-                        window.updateMessageBlock(index, ctx.chat[index]);
-                    } else if (typeof ctx.updateMessageBlock === 'function') {
-                        ctx.updateMessageBlock(index, ctx.chat[index]);
-                    } else if (ctx.eventSource) {
-                        ctx.eventSource.emit(ctx.event_types.MESSAGE_UPDATED, index);
-                    }
-                });
-                if (typeof ctx.saveChat === 'function') await ctx.saveChat();
-            }
-            
-            if (!silent) {
-                if (count > 0) UI.notify(`Cleaned ${count} elements instantly.`, 'success');
-                else UI.notify('No elements found (or protected).', 'info');
-            }
-        },
-
-        async checkAll() {
-            const ctx = Core.getContext();
-            if (!ctx?.chat) return;
-            let count = 0;
-            const st = Core.getSettings();
-            ctx.chat.forEach(msg => {
-                if (typeof msg.mes === 'string') count += Cleaner.cleanText(msg.mes, st).removed;
-            });
-            if (st.notifications) UI.notify(count > 0 ? `Found ${count} elements to clean.` : 'All clean.', 'info');
-            else if (typeof toastr !== 'undefined') toastr.info(count > 0 ? `Found ${count} elements.` : 'All clean.', 'Check Result');
-        },
-
-        buildSettingsPanelHtml(idPrefix = '') {
-            const st = Core.getSettings();
-            const p = idPrefix;
-            return `
-                <div class="styled_description_block">Extension by Zealllll</div>
-
-                <label class="checkbox_label">
-                    <input type="checkbox" class="rm-ell-input-auto" id="${p}rm-ell-auto" ${st.autoRemove ? 'checked' : ''} />
-                    <span>Auto Remove (After Generation)</span>
-                </label>
-
-                <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
-
-                <label class="checkbox_label" title="ลบวงเล็บภาษาอังกฤษที่ตามหลังภาษาไทย เช่น แชท(chat) ให้เหลือแค่ แชท">
-                    <input type="checkbox" class="rm-ell-input-engparens" id="${p}rm-ell-engparens" ${st.removeEngParens ? 'checked' : ''} />
-                    <span style="color:var(--smart-blue);"><b>Remove English in ( )</b></span>
-                </label>
-
-                <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
-
-                <label class="checkbox_label" title="อันตราย: ตัวเลือกนี้จะลบจุด (.) ทุกตัวในข้อความ!">
-                    <input type="checkbox" class="rm-ell-input-all" id="${p}rm-ell-all" ${st.removeAllDots ? 'checked' : ''} />
-                    <span>Remove ALL Dots (.)</span>
-                </label>
-
-                <label class="checkbox_label">
-                    <input type="checkbox" class="rm-ell-input-twodots" id="${p}rm-ell-twodots" ${st.treatTwoDots ? 'checked' : ''} />
-                    <span>Remove ".."</span>
-                </label>
-
-                <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
-
-                <label class="checkbox_label">
-                    <input type="checkbox" class="rm-ell-input-protect" id="${p}rm-ell-protect" ${st.protectCode !== false ? 'checked' : ''} />
-                    <span>Protect Code & HTML</span>
-                </label>
-
-                <label class="checkbox_label">
-                    <input type="checkbox" class="rm-ell-input-space" id="${p}rm-ell-space" ${st.preserveSpace ? 'checked' : ''} />
-                    <span>Preserve Space</span>
-                </label>
-
-                <label class="checkbox_label" title="แสดงแจ้งเตือนเมื่อทำการลบจุดหรือวงเล็บ">
-                    <input type="checkbox" class="rm-ell-input-notify" id="${p}rm-ell-notify" ${st.notifications !== false ? 'checked' : ''} />
-                    <span>Show Notifications</span>
-                </label>
-
-                <div style="display: flex; gap: 10px; margin-top: 15px;">
-                    <div class="rm-ell-btn-clean menu_button" style="flex: 1;" title="ลบสิ่งสกปรกในแชทปัจจุบันทันที">
-                        <i class="fa-solid fa-wand-magic-sparkles"></i> Clean Now
-                    </div>
-                    <div class="rm-ell-btn-check menu_button" style="flex: 1;" title="ตรวจสอบจำนวนที่ต้องลบ">
-                        <i class="fa-solid fa-magnifying-glass"></i> Check
-                    </div>
-                </div>
-            `;
-        },
-
+        // ----------------------------------------------------------------
+        // Inject settings drawer
+        // ----------------------------------------------------------------
         injectSettings() {
             if (typeof $ === 'undefined') return;
-
             if ($('#remove-ellipsis-settings').length > 0) return;
             const container = $('#extensions_settings');
             if (!container.length) return;
@@ -483,116 +553,263 @@
                             <div class="inline-drawer-icon fa-solid fa-circle-chevron-down"></div>
                         </div>
                         <div class="inline-drawer-content rm-ell-panel-body" style="display:none;">
-                            ${this.buildSettingsPanelHtml('drawer-')}
+                            ${this.buildSettingsPanelHtml()}
                         </div>
                     </div>
                 </div>
             `);
+        }
+    };
+
+    // ========================================================================
+    // MODULE: App
+    // ========================================================================
+    const App = {
+        _removeAllRunning: false,  // Lock against concurrent removeAll calls
+
+        // ----------------------------------------------------------------
+        // Unified toggle — single function handles both drawer + popup
+        // ----------------------------------------------------------------
+        toggleSetting(key) {
+            const def = SETTINGS_SCHEMA.find(d => d.key === key);
+            if (!def) return;
+            const st = Core.getSettings();
+            st[key] = !st[key];
+            Core.saveSettings();
+            UI.syncAll();
+            if (def.warning && st[key]) UI.notify(def.warning, 'warning');
+            else UI.notify(`${def.label}: ${st[key] ? 'ON' : 'OFF'}`);
         },
 
-        bindEvents() {
+        // ----------------------------------------------------------------
+        // Remove all — with undo snapshot + concurrency lock
+        // ----------------------------------------------------------------
+        async removeAll(silent = false) {
+            if (this._removeAllRunning) return;
+            this._removeAllRunning = true;
 
+            try {
+                const ctx = Core.getContext();
+                if (!ctx?.chat) return;
+
+                const settings = Core.getSettings();
+
+                // Save snapshot for undo (deep clone only modified messages)
+                const snapshot = ctx.chat.map(msg => ({
+                    mes: msg.mes,
+                    extra_display: msg.extra?.display_text
+                }));
+
+                let count = 0;
+                const updatedIndexes = [];
+
+                ctx.chat.forEach((msg, index) => {
+                    const removed = Cleaner.cleanMessage(msg, settings);
+                    if (removed > 0) {
+                        count += removed;
+                        updatedIndexes.push(index);
+                    }
+                });
+
+                if (updatedIndexes.length > 0) {
+                    UndoStack.push({ snapshot, indexes: updatedIndexes });
+
+                    // Update DOM for changed messages
+                    updatedIndexes.forEach(index => {
+                        this._updateMessageBlock(ctx, index);
+                    });
+
+                    await ctx.saveChat?.();
+                }
+
+                if (!silent) {
+                    if (count > 0) UI.notify(`Cleaned ${count} items.`, 'success');
+                    else UI.notify('Nothing to clean.', 'info');
+                }
+
+                UI.updateUndoButtons();
+
+            } finally {
+                this._removeAllRunning = false;
+            }
+        },
+
+        // ----------------------------------------------------------------
+        // Undo last removeAll
+        // ----------------------------------------------------------------
+        async undo() {
+            const entry = UndoStack.pop();
+            if (!entry) { UI.notify('Nothing to undo.', 'info'); return; }
+
+            const ctx = Core.getContext();
+            if (!ctx?.chat) return;
+
+            entry.indexes.forEach(index => {
+                const msg = ctx.chat[index];
+                if (!msg) return;
+                msg.mes = entry.snapshot[index].mes;
+                if (msg.extra && entry.snapshot[index].extra_display !== undefined) {
+                    msg.extra.display_text = entry.snapshot[index].extra_display;
+                }
+                this._updateMessageBlock(ctx, index);
+            });
+
+            await ctx.saveChat?.();
+            UI.notify('Undo complete.', 'success');
+            UI.updateUndoButtons();
+        },
+
+        // ----------------------------------------------------------------
+        // Check (dry-run) — no changes
+        // ----------------------------------------------------------------
+        async checkAll() {
+            const ctx = Core.getContext();
+            if (!ctx?.chat) return;
+            const count = Cleaner.countAll(ctx.chat);
+            UI.notify(count > 0 ? `Found ${count} items to clean.` : 'All clean.', 'info');
+        },
+
+        // ----------------------------------------------------------------
+        // Clean a single message by index (for per-message button)
+        // ----------------------------------------------------------------
+        async cleanSingleMessage(index) {
+            const ctx = Core.getContext();
+            if (!ctx?.chat) return;
+            const msg = ctx.chat[index];
+            if (!msg) return;
+
+            const snapshot = { mes: msg.mes, extra_display: msg.extra?.display_text };
+            const removed = Cleaner.cleanMessage(msg);
+
+            if (removed > 0) {
+                // Save undo snapshot for this single message
+                UndoStack.push({ snapshot: { [index]: snapshot }, indexes: [index] });
+                this._updateMessageBlock(ctx, index);
+                await ctx.saveChat?.();
+                UI.notify(`Cleaned ${removed} items from message.`, 'success');
+                UI.updateUndoButtons();
+            } else {
+                UI.notify('Nothing to clean in this message.', 'info');
+            }
+        },
+
+        // ----------------------------------------------------------------
+        // Helper: update single message block in DOM
+        // ----------------------------------------------------------------
+        _updateMessageBlock(ctx, index) {
+            if (typeof window.updateMessageBlock === 'function') {
+                window.updateMessageBlock(index, ctx.chat[index]);
+            } else if (typeof ctx.updateMessageBlock === 'function') {
+                ctx.updateMessageBlock(index, ctx.chat[index]);
+            } else if (ctx.eventSource) {
+                ctx.eventSource.emit(ctx.event_types.MESSAGE_UPDATED, index);
+            }
+        },
+
+        // ----------------------------------------------------------------
+        // Bind all events
+        // ----------------------------------------------------------------
+        bindEvents() {
             if (this._eventsBound) return;
             this._eventsBound = true;
 
-            const updateSetting = (key, val) => {
-                Core.getSettings()[key] = val;
-                Core.saveSettings();
-            };
-
-            const syncCheckboxes = (cls, checked) => {
-                $(`.${cls}`).each((_, el) => {
-                    if (el.checked !== checked) el.checked = checked;
+            // Settings drawer checkboxes — generated from schema
+            for (const def of SETTINGS_SCHEMA) {
+                $(document).on('change', `.rm-ell-input-${def.key}`, (e) => {
+                    const st = Core.getSettings();
+                    st[def.key] = e.target.checked;
+                    Core.saveSettings();
+                    UI.syncAll();
+                    if (def.warning && e.target.checked) UI.notify(def.warning, 'warning');
+                    // Don't double-notify if changed from checkbox (UI.syncAll handles visual)
                 });
-            };
+            }
 
-            $(document).on('change', '.rm-ell-input-auto', (e) => {
-                updateSetting('autoRemove', e.target.checked);
-                syncCheckboxes('rm-ell-input-auto', e.target.checked);
-                UI.updateQuickButtonState();
-                UI.updatePopupMenuState();
-                UI.updateDrawerHeaderStatus();
-                UI.notify(`Auto Remove: ${e.target.checked ? 'ON' : 'OFF'}`);
-            });
-            $(document).on('change', '.rm-ell-input-engparens', (e) => {
-                updateSetting('removeEngParens', e.target.checked);
-                syncCheckboxes('rm-ell-input-engparens', e.target.checked);
-                UI.updatePopupMenuState();
-                UI.notify(`Remove English in ( ): ${e.target.checked ? 'ON' : 'OFF'}`);
-            });
-            $(document).on('change', '.rm-ell-input-all', (e) => {
-                updateSetting('removeAllDots', e.target.checked);
-                syncCheckboxes('rm-ell-input-all', e.target.checked);
-                if (e.target.checked) UI.notify("Warning: Will remove ALL periods!", 'warning');
-            });
-            $(document).on('change', '.rm-ell-input-twodots', (e) => {
-                updateSetting('treatTwoDots', e.target.checked);
-                syncCheckboxes('rm-ell-input-twodots', e.target.checked);
-            });
-            $(document).on('change', '.rm-ell-input-space', (e) => {
-                updateSetting('preserveSpace', e.target.checked);
-                syncCheckboxes('rm-ell-input-space', e.target.checked);
-            });
-            $(document).on('change', '.rm-ell-input-protect', (e) => {
-                updateSetting('protectCode', e.target.checked);
-                syncCheckboxes('rm-ell-input-protect', e.target.checked);
-                UI.notify(`Code Protection: ${e.target.checked ? 'ON' : 'OFF'}`);
-            });
-            $(document).on('change', '.rm-ell-input-notify', (e) => {
-                updateSetting('notifications', e.target.checked);
-                syncCheckboxes('rm-ell-input-notify', e.target.checked);
-                if (e.target.checked) UI.notify('Notifications Enabled', 'success');
-            });
-
+            // Action buttons
             $(document).on('click', '.rm-ell-btn-clean', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
+                e.preventDefault(); e.stopPropagation();
                 UI.closeDrawer();
                 await App.removeAll();
             });
+
+            $(document).on('click', '.rm-ell-btn-undo:not(.rm-ell-btn-disabled)', async (e) => {
+                e.preventDefault(); e.stopPropagation();
+                UI.closeDrawer();
+                await App.undo();
+            });
+
             $(document).on('click', '.rm-ell-btn-check', async (e) => {
-                e.preventDefault();
-                e.stopPropagation();
+                e.preventDefault(); e.stopPropagation();
                 UI.closeDrawer();
                 await App.checkAll();
             });
+
+            // Per-message clean button (injected via MutationObserver)
+            $(document).on('click', '.rm-ell-msg-clean-btn', async (e) => {
+                e.preventDefault(); e.stopPropagation();
+                const index = parseInt($(e.currentTarget).closest('.mes').attr('mesid'), 10);
+                if (!isNaN(index)) await App.cleanSingleMessage(index);
+            });
         },
 
+        // ----------------------------------------------------------------
+        // Inject per-message clean button into existing messages
+        // ----------------------------------------------------------------
+        injectMessageButtons() {
+            if (typeof $ === 'undefined') return;
+            $('.mes').each((_, el) => {
+                const mes = $(el);
+                if (mes.find('.rm-ell-msg-clean-btn').length > 0) return;
+                const extraButtons = mes.find('.extraMesButtons, .mes_buttons');
+                if (!extraButtons.length) return;
+                extraButtons.prepend(
+                    `<div class="rm-ell-msg-clean-btn mes_button" title="Clean this message">
+                        <i class="fa-solid fa-eraser"></i>
+                    </div>`
+                );
+            });
+        },
 
+        // ----------------------------------------------------------------
+        // Init
+        // ----------------------------------------------------------------
         init() {
             const ctx = Core.getContext();
-            this.bindEvents(); 
+            this.bindEvents();
+
+            // Auto-remove on new message
             if (ctx?.eventSource) {
                 ctx.eventSource.on(ctx.event_types.MESSAGE_RECEIVED, async () => {
                     if (Core.getSettings().autoRemove) await App.removeAll(true);
                 });
             }
-            this.injectSettings();
+
+            UI.injectSettings();
             UI.injectQuickButton();
+            this.injectMessageButtons();
         }
     };
 
-    (function boot() {
+    // ========================================================================
+    // Boot
+    // ========================================================================
+    (() => {
         if (typeof document === 'undefined') return;
+
         const onReady = () => {
             App.init();
             setTimeout(() => UI.updateDrawerHeaderStatus(), 100);
 
-            let pending = false;
+            let debounceTimer = null;
             let isRunning = false;
 
             const runChecks = () => {
-                pending = false;
                 if (isRunning) return;
                 isRunning = true;
                 try {
-                    if (!document.getElementById('remove-ellipsis-settings')) {
-                        App.injectSettings();
-                    }
-                    if (!document.getElementById('rm-ell-quick-btn')) {
-                        UI.injectQuickButton();
-                    }
-
+                    if (!document.getElementById('remove-ellipsis-settings'))  UI.injectSettings();
+                    if (!document.getElementById('rm-ell-quick-btn'))          UI.injectQuickButton();
+                    App.injectMessageButtons();
                     UI.updateDrawerHeaderStatus();
                 } catch (err) {
                     console.error('[CleanerExt] observer error:', err);
@@ -602,22 +819,19 @@
             };
 
             const scheduleCheck = () => {
-                if (pending || isRunning) return;
-                pending = true;
-                if (typeof requestAnimationFrame === 'function') {
-                    requestAnimationFrame(runChecks);
-                } else {
-                    setTimeout(runChecks, 50);
-                }
+                clearTimeout(debounceTimer);
+                debounceTimer = setTimeout(runChecks, 150);
             };
 
             const obs = new MutationObserver(scheduleCheck);
             const target = document.querySelector('#content') || document.body;
             obs.observe(target, { childList: true, subtree: true });
         };
+
         if (window.SillyTavern?.getContext) onReady();
-        else setTimeout(onReady, 2000); 
+        else setTimeout(onReady, 2000);
     })();
 
-    window.RemoveEllipsis = { Core, Cleaner, UI, App };
+    // Public API
+    window.RemoveEllipsis = { Core, Cleaner, UI, App, UndoStack };
 })();
