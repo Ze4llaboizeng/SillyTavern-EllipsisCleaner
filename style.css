@@ -22,7 +22,7 @@
     display: inline-flex;
     align-items: stretch;
     height: 32px;
-    margin: 0 4px;
+    margin: 0 12px 0 6px;
     border-radius: 16px;
     background: transparent;
     border: 1px solid var(--SmartThemeBorderColor, #3a3f47);
@@ -190,6 +190,7 @@
 @media (max-width: 600px) {
     .rm-ell-quick-btn-group {
         height: 30px;
+        margin: 0 8px 0 4px;
     }
     .rm-ell-btn-action {
         font-size: 15px;
