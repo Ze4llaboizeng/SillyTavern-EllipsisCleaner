@@ -15,7 +15,7 @@
 }
 
 /* ============================================================
-   QUICK BUTTON (ใกล้ช่องพิมพ์)
+   QUICK BUTTON — Option D: square icon + dot badge
    ============================================================ */
 #rm-ell-quick-btn-wrapper {
     position: relative;
@@ -26,77 +26,81 @@
     flex: 0 0 auto;
     height: auto;
     vertical-align: middle;
+    /* เว้นระยะจากปุ่มส่ง */
+    margin: 0 10px 0 4px;
 }
 
 #rm-ell-quick-btn {
+    position: relative;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
 
-    /* ใช้ CSS variable — แก้ที่เดียว */
     width: var(--rm-ell-btn-size);
     height: var(--rm-ell-btn-size);
     min-width: var(--rm-ell-btn-size);
     min-height: var(--rm-ell-btn-size);
-    max-width: var(--rm-ell-btn-size);
-    max-height: var(--rm-ell-btn-size);
     flex: 0 0 var(--rm-ell-btn-size);
-    aspect-ratio: 1 / 1;
 
     padding: 0;
-    border-radius: 50%;
+    border-radius: 8px;
     background: transparent;
-    color: var(--text-main, #222);
-    border: none;
+    color: var(--text-muted, rgba(128,128,128,0.85));
+    border: 1px solid var(--SmartThemeBorderColor, rgba(128,128,128,0.25));
     box-shadow: none;
     cursor: pointer;
-    transition: background 0.15s ease, box-shadow 0.2s ease, transform 0.1s ease;
-    margin: 0 12px 0 6px;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
     user-select: none;
     -webkit-user-select: none;
     -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-    line-height: 1;
-    overflow: hidden;
-    vertical-align: middle;
+    overflow: visible; /* dot badge ต้องโผล่ออกนอกขอบ */
 }
 
-#rm-ell-quick-btn .rm-ell-quick-btn-emoji {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    height: 100%;
-    font-size: 18px;
+#rm-ell-quick-btn i {
+    font-size: 15px;
     line-height: 1;
-    font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji",
-                 "Segoe UI Symbol", "Twemoji Mozilla", sans-serif;
-    font-variant-emoji: emoji;
-    text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
+    pointer-events: none;
 }
 
 #rm-ell-quick-btn:hover {
-    background: var(--white30a, rgba(255, 255, 255, 0.08));
-    transform: none;
+    background: var(--white30a, rgba(128,128,128,0.1));
+    color: var(--text-main, inherit);
+    border-color: var(--SmartThemeBorderColor, rgba(128,128,128,0.45));
 }
 
 #rm-ell-quick-btn:active {
-    transform: scale(0.92);
+    transform: scale(0.93);
 }
 
+/* Auto active — เปลี่ยนสีตัวไอคอนให้รู้ว่า on แต่ไม่ใช้ ring */
 #rm-ell-quick-btn.rm-ell-auto-active {
-    background: transparent !important;
-    color: inherit !important;
-    border: none !important;
-    box-shadow: inset 0 0 0 2px var(--green-50, #3c8d51);
+    color: var(--green-50, #3c8d51);
+    border-color: var(--green-50, #3c8d51);
+    background: transparent;
 }
 
+/* Long press feedback */
 #rm-ell-quick-btn.rm-ell-pressing {
-    box-shadow: inset 0 0 0 2px var(--SmartThemeQuoteColor, #4a90e2);
-    transform: scale(0.95);
+    background: var(--white30a, rgba(128,128,128,0.12));
+    transform: scale(0.93);
+}
+
+/* ── Dot badge ── */
+.rm-ell-auto-dot {
+    position: absolute;
+    top: -3px;
+    right: -3px;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--green-50, #3c8d51);
+    /* fallback chain: ST dark bg → ST body bg → generic dark */
+    border: 2px solid var(--chat-tint-color, var(--main-text-color, var(--grey-800, #1e1e1e)));
+    pointer-events: none;
+    z-index: 1;
 }
 
 /* ============================================================
@@ -292,13 +296,19 @@
         --rm-ell-btn-size: var(--rm-ell-btn-size-mobile);
     }
 
-    #rm-ell-quick-btn {
-        font-size: 15px;
-        margin: 0 8px 0 4px;
+    #rm-ell-quick-btn-wrapper {
+        margin: 0 8px 0 2px;
     }
 
-    #rm-ell-quick-btn .rm-ell-quick-btn-emoji {
-        font-size: 16px;
+    #rm-ell-quick-btn i {
+        font-size: 14px;
+    }
+
+    .rm-ell-auto-dot {
+        width: 7px;
+        height: 7px;
+        top: -2px;
+        right: -2px;
     }
 
     .rm-ell-popup-menu {
