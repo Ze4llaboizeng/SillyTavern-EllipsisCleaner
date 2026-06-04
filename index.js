@@ -35,6 +35,17 @@
             title: 'ลบอัตโนมัติหลังจาก AI สร้างข้อความ'
         },
         {
+            key: 'cleanDepth',
+            type: 'number',
+            default: 1,
+            min: 1,
+            max: 999,
+            label: 'Auto Clean Depth',
+            icon: 'fa-solid fa-layer-group',
+            inPopup: false,
+            title: 'จำนวน message ล่าสุดที่ให้ Auto Remove ทำงาน (1 = เฉพาะล่าสุด, 0 = ทั้งหมด)'
+        },
+        {
             key: 'removeEngParens',
             default: false,
             label: 'Remove English in ( )',
@@ -155,6 +166,13 @@
             let processed = text;
             let removedCount = 0;
 
+            // --- Always protect <think> blocks regardless of protectCode setting ---
+            // mask ทั้งก้อนก่อนเสมอ เพราะเนื้อหาใน think ไม่ควรถูกแตะ
+            processed = processed.replace(
+                /<think\b[^>]*>[\s\S]*?<\/think>/gi,
+                m => `@@PT${protectedItems.push(m) - 1}@@`
+            );
+
             // --- Protect code/HTML blocks ---
             if (settings.protectCode) {
                 const mask = (regex) => {
@@ -169,6 +187,7 @@
                 mask(/<style\b[^>]*>[\s\S]*?<\/style>/gi);
                 mask(/<pre\b[^>]*>[\s\S]*?<\/pre>/gi);
                 mask(/<code\b[^>]*>[\s\S]*?<\/code>/gi);
+                // <think> ถูก mask ไปแล้วข้างบน ไม่ต้อง mask ซ้ำ
                 mask(/<[^>]+>/g);
             }
 
@@ -424,6 +443,18 @@
                 <div class="styled_description_block">Extension by Zealllll</div>
 
                 ${primary.map(makeCheckbox).join('')}
+
+                <div class="rm-ell-depth-row" title="จำนวน message ล่าสุดที่ให้ Auto Remove ทำงาน&#10;1 = เฉพาะ message ล่าสุด&#10;0 = ทั้งหมด (เหมือน Clean Now)">
+                    <label for="drawer-rm-ell-cleanDepth" class="rm-ell-depth-label">
+                        <i class="fa-solid fa-layer-group"></i> Auto Clean Depth
+                    </label>
+                    <input type="number"
+                           id="drawer-rm-ell-cleanDepth"
+                           class="rm-ell-input-cleanDepth text_pole"
+                           min="0" max="999" step="1"
+                           value="${st.cleanDepth ?? 1}" />
+                    <span class="rm-ell-depth-hint">messages (0 = all)</span>
+                </div>
 
                 <hr style="margin: 10px 0; border-color: var(--grey-60); opacity: 0.5;">
 
@@ -719,15 +750,27 @@
 
             // Settings drawer checkboxes — generated from schema
             for (const def of SETTINGS_SCHEMA) {
+                if (def.type === 'number') continue; // handle separately below
                 $(document).on('change', `.rm-ell-input-${def.key}`, (e) => {
                     const st = Core.getSettings();
                     st[def.key] = e.target.checked;
                     Core.saveSettings();
                     UI.syncAll();
                     if (def.warning && e.target.checked) UI.notify(def.warning, 'warning');
-                    // Don't double-notify if changed from checkbox (UI.syncAll handles visual)
                 });
             }
+
+            // cleanDepth number input
+            $(document).on('change input', '.rm-ell-input-cleanDepth', (e) => {
+                const raw = parseInt(e.target.value, 10);
+                const schema = SETTINGS_SCHEMA.find(d => d.key === 'cleanDepth');
+                const val = isNaN(raw)
+                    ? schema.default
+                    : Math.min(schema.max, Math.max(0, raw));
+                e.target.value = val;
+                Core.getSettings().cleanDepth = val;
+                Core.saveSettings();
+            });
 
             // Action buttons
             $(document).on('click', '.rm-ell-btn-clean', async (e) => {
@@ -775,16 +818,60 @@
         },
 
         // ----------------------------------------------------------------
+        // Remove only the N most recent messages (used by auto-remove)
+        // depth = 0 หมายถึงทั้งหมด (fallback to removeAll)
+        // ----------------------------------------------------------------
+        async removeRecent(depth) {
+            if (this._removeAllRunning) return;
+            if (!depth || depth <= 0) { await this.removeAll(true); return; }
+
+            this._removeAllRunning = true;
+            try {
+                const ctx = Core.getContext();
+                if (!ctx?.chat) return;
+
+                const settings = Core.getSettings();
+                const chat = ctx.chat;
+                const startIndex = Math.max(0, chat.length - depth);
+
+                const snapshot = {};
+                let count = 0;
+                const updatedIndexes = [];
+
+                for (let i = startIndex; i < chat.length; i++) {
+                    const msg = chat[i];
+                    snapshot[i] = { mes: msg.mes, extra_display: msg.extra?.display_text };
+                    const removed = Cleaner.cleanMessage(msg, settings);
+                    if (removed > 0) {
+                        count += removed;
+                        updatedIndexes.push(i);
+                    }
+                }
+
+                if (updatedIndexes.length > 0) {
+                    UndoStack.push({ snapshot, indexes: updatedIndexes });
+                    updatedIndexes.forEach(i => this._updateMessageBlock(ctx, i));
+                    await ctx.saveChat?.();
+                }
+
+                UI.updateUndoButtons();
+            } finally {
+                this._removeAllRunning = false;
+            }
+        },
+
+        // ----------------------------------------------------------------
         // Init
         // ----------------------------------------------------------------
         init() {
             const ctx = Core.getContext();
             this.bindEvents();
 
-            // Auto-remove on new message
+            // Auto-remove on new message — ใช้ depth แทน removeAll ทั้งหมด
             if (ctx?.eventSource) {
                 ctx.eventSource.on(ctx.event_types.MESSAGE_RECEIVED, async () => {
-                    if (Core.getSettings().autoRemove) await App.removeAll(true);
+                    const st = Core.getSettings();
+                    if (st.autoRemove) await App.removeRecent(st.cleanDepth);
                 });
             }
 
