@@ -360,6 +360,7 @@
         // ----------------------------------------------------------------
         _buildPopupHTML() {
             const st = Core.getSettings();
+            const dotVisible = st.autoRemove ? '' : 'display:none;';
             const popupItems = SETTINGS_SCHEMA.filter(d => d.inPopup).map(def => {
                 const val = !!st[def.key];
                 return `
@@ -370,9 +371,6 @@
                         <span class="rm-ell-toggle-status ${val ? 'on' : 'off'}">${val ? 'ON' : 'OFF'}</span>
                     </div>`;
             }).join('');
-
-            const st = Core.getSettings();
-            const dotVisible = st.autoRemove ? '' : 'display:none;';
             return `
                 <div id="rm-ell-quick-btn-wrapper" class="rm-ell-quick-btn-wrapper">
                     <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" role="button"
