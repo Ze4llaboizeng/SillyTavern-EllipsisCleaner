@@ -70,13 +70,10 @@
 
             // --- 1. REMOVE ENGLISH PARENTHESES AFTER THAI ---
             if (settings.removeEngParens) {
-                // อธิบาย Regex ใหม่:
-                // Group 1: จับตัวอักษรไทย รวมถึงสัญลักษณ์ตกแต่ง (เช่น *, _, ") ที่อาจคั่นอยู่
-                // Group 2: จับช่องว่าง(ถ้ามี) + วงเล็บที่มีภาษาอังกฤษข้างใน
                 const engParenRegex = /([\u0E00-\u0E7F][*_"']*)(\s*\([^)]*[A-Za-z][^)]*\))/g;
                 processed = processed.replace(engParenRegex, (match, g1, g2) => {
                     removedCount += g2.length;
-                    return g1; // คืนค่าภาษาไทยกลับไป ลบเฉพาะ Group 2 (วงเล็บ) ทิ้ง
+                    return g1;
                 });
             }
 
@@ -155,21 +152,16 @@
             if (typeof $ !== 'undefined') $('.drawer-overlay').trigger('click');
         },
 
-        // ปุ่มลัดใกล้ช่องพิมพ์ข้อความ
+        // ปุ่มลัดใกล้ช่องพิมพ์ข้อความ (แบบแคปซูล)
         injectQuickButton() {
             if (typeof $ === 'undefined') return;
-            if ($('#rm-ell-quick-btn').length > 0) return;
+            if ($('#rm-ell-quick-btn-wrapper').length > 0) return;
 
-            // หา container ใกล้ช่องพิมพ์ข้อความ
             const sendForm = $('#send_form');
             if (!sendForm.length) return;
 
             const st = Core.getSettings();
 
-            // สร้างปุ่มลัดพร้อม popup menu
-            // หมายเหตุ: ไม่ใส่ title เพื่อไม่ให้ tooltip ของ browser โผล่ขึ้นมาตลอดเวลา
-            // การใช้งาน: คลิกสั้น = Clean Now, กดค้าง = เปิด popup menu
-            // สร้างปุ่มแบบ Split Button (แคปซูล)
             const quickBtn = $(`
                 <div id="rm-ell-quick-btn-wrapper" class="rm-ell-quick-btn-wrapper">
                     <div id="rm-ell-quick-btn-group" class="rm-ell-quick-btn-group">
@@ -203,7 +195,6 @@
                 </div>
             `);
 
-            // แทรกปุ่มก่อน send_but หรือท้าย send_form
             const sendBut = $('#send_but');
             if (sendBut.length) {
                 sendBut.before(quickBtn);
@@ -211,7 +202,7 @@
                 sendForm.append(quickBtn);
             }
 
-          // เมื่อคลิกฝั่งซ้าย (ลบข้อความทันที)
+            // เมื่อคลิกฝั่งซ้าย (ลบข้อความทันที)
             $('#rm-ell-btn-action').on('click', async (e) => {
                 e.preventDefault();
                 e.stopPropagation();
@@ -288,18 +279,16 @@
 
         updatePopupMenuState() {
             const st = Core.getSettings();
-            // Update Auto Remove status
             const autoStatus = $('#rm-ell-popup-auto .rm-ell-toggle-status');
             autoStatus.text(st.autoRemove ? 'ON' : 'OFF');
             autoStatus.removeClass('on off').addClass(st.autoRemove ? 'on' : 'off');
             
-            // Update Remove English Parens status
             const engStatus = $('#rm-ell-popup-engparens .rm-ell-toggle-status');
             engStatus.text(st.removeEngParens ? 'ON' : 'OFF');
             engStatus.removeClass('on off').addClass(st.removeEngParens ? 'on' : 'off');
         },
 
-       updateQuickButtonState() {
+        updateQuickButtonState() {
             const btnGroup = $('#rm-ell-quick-btn-group');
             if (!btnGroup.length) return;
             const st = Core.getSettings();
@@ -317,9 +306,8 @@
             let statusBadge = document.getElementById('rm-ell-header-status');
 
             if (!statusBadge) {
-                // สร้าง status badge ถ้ายังไม่มี — แต่เฉพาะตอนที่ header มีอยู่จริง
                 const header = document.querySelector('#remove-ellipsis-settings .inline-drawer-toggle b');
-                if (!header) return; // ยังไม่มี settings panel ก็ไม่ต้องทำอะไร
+                if (!header) return;
                 const span = document.createElement('span');
                 span.id = 'rm-ell-header-status';
                 span.className = `rm-ell-header-status ${desiredClass}`;
@@ -328,7 +316,6 @@
                 return;
             }
 
-            // อัปเดตเฉพาะเมื่อค่าต่างจากเดิม เพื่อป้องกัน DOM mutation loop
             if (statusBadge.textContent !== desiredText) {
                 statusBadge.textContent = desiredText;
             }
@@ -350,19 +337,16 @@
             let count = 0;
             let updatedIndexes = [];
             
-            // 1. วนเช็กและลบจุด/วงเล็บ ในข้อมูล Chat
             ctx.chat.forEach((msg, index) => {
                 const removed = Cleaner.cleanMessage(msg);
                 if (removed > 0) {
                     count += removed;
-                    updatedIndexes.push(index); // บันทึกตำแหน่งที่ถูกแก้ไข
+                    updatedIndexes.push(index);
                 }
             });
             
-            // 2. ถ้ามีการแก้ไข ให้ทำการบังคับรีเรนเดอร์ UI ทันที
             if (updatedIndexes.length > 0) {
                 updatedIndexes.forEach(index => {
-                    // ใช้ฟังก์ชันหลักของ ST เพื่อเรนเดอร์กล่องข้อความที่มีการแก้ไขใหม่
                     if (typeof window.updateMessageBlock === 'function') {
                         window.updateMessageBlock(index, ctx.chat[index]);
                     } else if (typeof ctx.updateMessageBlock === 'function') {
@@ -392,11 +376,8 @@
             else if (typeof toastr !== 'undefined') toastr.info(count > 0 ? `Found ${count} elements.` : 'All clean.', 'Check Result');
         },
 
-        // สร้าง HTML สำหรับ settings panel (ใช้ร่วมระหว่าง drawer และ extensions menu)
         buildSettingsPanelHtml(idPrefix = '') {
             const st = Core.getSettings();
-            // ใช้ idPrefix เพื่อแยก ID ของ inputs ระหว่างสองตำแหน่ง (drawer vs ext-menu)
-            // แต่ใช้ class กลาง (rm-ell-input-*) เพื่อให้ event handlers จับได้ทั้งสองที่
             const p = idPrefix;
             return `
                 <div class="styled_description_block">Extension by Zealllll</div>
@@ -476,7 +457,6 @@
         },
 
         bindEvents() {
-
             if (this._eventsBound) return;
             this._eventsBound = true;
 
@@ -485,7 +465,6 @@
                 Core.saveSettings();
             };
 
-            // sync ค่า checkbox ของ class เดียวกันทุกตัว (ทั้งใน drawer + extensions menu)
             const syncCheckboxes = (cls, checked) => {
                 $(`.${cls}`).each((_, el) => {
                     if (el.checked !== checked) el.checked = checked;
@@ -544,12 +523,10 @@
             });
         },
 
-
         init() {
             const ctx = Core.getContext();
             this.bindEvents(); 
             if (ctx?.eventSource) {
-                // อัปเดตเมื่อ AI สร้างข้อความเสร็จสมบูรณ์
                 ctx.eventSource.on(ctx.event_types.MESSAGE_RECEIVED, async () => {
                     if (Core.getSettings().autoRemove) await App.removeAll(true);
                 });
@@ -563,12 +540,8 @@
         if (typeof document === 'undefined') return;
         const onReady = () => {
             App.init();
-            // อัปเดต header status หลังจาก inject settings
             setTimeout(() => UI.updateDrawerHeaderStatus(), 100);
 
-            // ใช้ debounce + reentrancy guard เพื่อป้องกัน infinite loop
-            // (การเรียก injectSettings/injectQuickButton/updateDrawerHeaderStatus
-            //  อาจเปลี่ยน DOM และทำให้ MutationObserver ทำงานซ้ำได้)
             let pending = false;
             let isRunning = false;
 
@@ -577,14 +550,12 @@
                 if (isRunning) return;
                 isRunning = true;
                 try {
-                    // ทำงานเฉพาะเมื่อยังไม่มีองค์ประกอบเหล่านี้ หรือสถานะเปลี่ยน
                     if (!document.getElementById('remove-ellipsis-settings')) {
                         App.injectSettings();
                     }
-                    if (!document.getElementById('rm-ell-quick-btn')) {
+                    if (!document.getElementById('rm-ell-quick-btn-wrapper')) {
                         UI.injectQuickButton();
                     }
-
                     UI.updateDrawerHeaderStatus();
                 } catch (err) {
                     console.error('[CleanerExt] observer error:', err);
@@ -596,7 +567,6 @@
             const scheduleCheck = () => {
                 if (pending || isRunning) return;
                 pending = true;
-                // ใช้ requestAnimationFrame เพื่อรวมการเปลี่ยนแปลงหลายครั้งให้เป็นรอบเดียว
                 if (typeof requestAnimationFrame === 'function') {
                     requestAnimationFrame(runChecks);
                 } else {
@@ -611,7 +581,6 @@
         if (window.SillyTavern?.getContext) onReady();
         else setTimeout(onReady, 2000); 
     })();
-
 
     window.RemoveEllipsis = { Core, Cleaner, UI, App };
 })();
