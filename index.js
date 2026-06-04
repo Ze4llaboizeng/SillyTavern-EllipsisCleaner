@@ -53,7 +53,6 @@
             let processed = text;
             let removedCount = 0;
 
-            // --- PROTECT CODE BLOCKS ---
             if (settings.protectCode) {
                 const mask = (regex) => {
                     processed = processed.replace(regex, m => `@@PT${protectedItems.push(m) - 1}@@`);
@@ -68,16 +67,14 @@
                 mask(/<[^>]+>/g);
             }
 
-            // --- 1. REMOVE ENGLISH PARENTHESES AFTER THAI ---
             if (settings.removeEngParens) {
                 const engParenRegex = /([\u0E00-\u0E7F][*_"']*)(\s*\([^)]*[A-Za-z][^)]*\))/g;
                 processed = processed.replace(engParenRegex, (match, g1, g2) => {
                     removedCount += g2.length;
-                    return g1;
+                    return g1; 
                 });
             }
 
-            // --- 2. REMOVE ELLIPSIS ---
             let patternSource;
             if (settings.removeAllDots) {
                 patternSource = "\\.+|…";
@@ -106,7 +103,6 @@
                 return ' '; 
             });
 
-            // --- UNPROTECT CODE BLOCKS ---
             if (settings.protectCode) {
                 processed = processed.replace(/@@PT(\d+)@@/g, (_, i) => protectedItems[i]);
             }
@@ -152,10 +148,9 @@
             if (typeof $ !== 'undefined') $('.drawer-overlay').trigger('click');
         },
 
-        // ปุ่มลัดใกล้ช่องพิมพ์ข้อความ (แบบแคปซูล)
         injectQuickButton() {
             if (typeof $ === 'undefined') return;
-            if ($('#rm-ell-quick-btn-wrapper').length > 0) return;
+            if ($('#rm-ell-quick-btn').length > 0) return;
 
             const sendForm = $('#send_form');
             if (!sendForm.length) return;
@@ -164,9 +159,8 @@
 
             const quickBtn = $(`
                 <div id="rm-ell-quick-btn-wrapper" class="rm-ell-quick-btn-wrapper">
-                    <div id="rm-ell-quick-btn-group" class="rm-ell-quick-btn-group">
-                        <div id="rm-ell-btn-action" class="rm-ell-btn-action" title="Clean Now">📝</div>
-                        <div id="rm-ell-btn-toggle" class="rm-ell-btn-toggle" title="Options"><i class="fa-solid fa-caret-up"></i></div>
+                    <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" role="button" aria-label="Text Cleaner: tap to clean, hold for options">
+                        <span class="rm-ell-quick-btn-emoji" aria-hidden="true">📝</span>
                     </div>
                     <div id="rm-ell-popup-menu" class="rm-ell-popup-menu">
                         <div class="rm-ell-popup-header">
@@ -202,21 +196,63 @@
                 sendForm.append(quickBtn);
             }
 
-            // เมื่อคลิกฝั่งซ้าย (ลบข้อความทันที)
-            $('#rm-ell-btn-action').on('click', async (e) => {
+            const LONG_PRESS_MS = 500;
+            const btnEl = document.getElementById('rm-ell-quick-btn');
+            let pressTimer = null;
+            let longPressFired = false;
+            let pressActive = false;
+
+            const clearPressTimer = () => {
+                if (pressTimer) {
+                    clearTimeout(pressTimer);
+                    pressTimer = null;
+                }
+            };
+
+            const startPress = (e) => {
+                if (e.type === 'mousedown' && e.button !== 0) return;
+                pressActive = true;
+                longPressFired = false;
+                btnEl?.classList.add('rm-ell-pressing');
+                clearPressTimer();
+                pressTimer = setTimeout(() => {
+                    longPressFired = true;
+                    btnEl?.classList.remove('rm-ell-pressing');
+                    this.togglePopupMenu();
+                    if (navigator.vibrate) { try { navigator.vibrate(15); } catch (_) {} }
+                }, LONG_PRESS_MS);
+            };
+
+            const endPress = (e, cancelled = false) => {
+                if (!pressActive) return;
+                pressActive = false;
+                clearPressTimer();
+                btnEl?.classList.remove('rm-ell-pressing');
+                if (cancelled || longPressFired) return;
+                if (e) { try { e.preventDefault(); e.stopPropagation(); } catch (_) {} }
+                App.removeAll();
+            };
+
+            $('#rm-ell-quick-btn')
+                .on('mousedown', (e) => startPress(e))
+                .on('mouseup', (e) => endPress(e))
+                .on('mouseleave', () => endPress(null, true));
+
+            $('#rm-ell-quick-btn')
+                .on('touchstart', (e) => { startPress(e); }, { passive: true })
+                .on('touchend', (e) => endPress(e))
+                .on('touchcancel', () => endPress(null, true));
+
+            $('#rm-ell-quick-btn').on('contextmenu', (e) => {
                 e.preventDefault();
-                e.stopPropagation();
-                await App.removeAll();
+                return false;
             });
 
-            // เมื่อคลิกฝั่งขวา (เปิดเมนูตั้งค่า)
-            $('#rm-ell-btn-toggle').on('click', (e) => {
+            $('#rm-ell-quick-btn').on('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                this.togglePopupMenu();
             });
 
-            // Popup menu item handlers
             $('#rm-ell-popup-clean').on('click', async (e) => {
                 e.stopPropagation();
                 this.hidePopupMenu();
@@ -237,7 +273,6 @@
                 this.updatePopupMenuState();
                 this.updateQuickButtonState();
                 this.updateDrawerHeaderStatus();
-                // Sync checkbox in settings panel
                 $('#rm-ell-auto').prop('checked', st.autoRemove);
                 UI.notify(`Auto Remove: ${st.autoRemove ? 'ON' : 'OFF'}`);
             });
@@ -248,12 +283,10 @@
                 st.removeEngParens = !st.removeEngParens;
                 Core.saveSettings();
                 this.updatePopupMenuState();
-                // Sync checkbox in settings panel
                 $('#rm-ell-engparens').prop('checked', st.removeEngParens);
                 UI.notify(`Remove English in ( ): ${st.removeEngParens ? 'ON' : 'OFF'}`);
             });
 
-            // ปิด popup เมื่อคลิกที่อื่น
             $(document).on('click.rmellpopup', (e) => {
                 if (!$(e.target).closest('#rm-ell-quick-btn-wrapper').length) {
                     this.hidePopupMenu();
@@ -289,13 +322,14 @@
         },
 
         updateQuickButtonState() {
-            const btnGroup = $('#rm-ell-quick-btn-group');
-            if (!btnGroup.length) return;
+            const btn = $('#rm-ell-quick-btn');
+            if (!btn.length) return;
             const st = Core.getSettings();
+            btn.removeAttr('title');
             if (st.autoRemove) {
-                btnGroup.addClass('rm-ell-auto-active');
+                btn.addClass('rm-ell-auto-active');
             } else {
-                btnGroup.removeClass('rm-ell-auto-active');
+                btn.removeClass('rm-ell-auto-active');
             }
         },
 
@@ -341,7 +375,7 @@
                 const removed = Cleaner.cleanMessage(msg);
                 if (removed > 0) {
                     count += removed;
-                    updatedIndexes.push(index);
+                    updatedIndexes.push(index); 
                 }
             });
             
@@ -457,6 +491,7 @@
         },
 
         bindEvents() {
+
             if (this._eventsBound) return;
             this._eventsBound = true;
 
@@ -523,6 +558,7 @@
             });
         },
 
+
         init() {
             const ctx = Core.getContext();
             this.bindEvents(); 
@@ -553,9 +589,10 @@
                     if (!document.getElementById('remove-ellipsis-settings')) {
                         App.injectSettings();
                     }
-                    if (!document.getElementById('rm-ell-quick-btn-wrapper')) {
+                    if (!document.getElementById('rm-ell-quick-btn')) {
                         UI.injectQuickButton();
                     }
+
                     UI.updateDrawerHeaderStatus();
                 } catch (err) {
                     console.error('[CleanerExt] observer error:', err);
