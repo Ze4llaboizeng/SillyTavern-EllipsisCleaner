@@ -300,6 +300,9 @@
             const btn = $('#rm-ell-quick-btn');
             if (!btn.length) return;
             const st = Core.getSettings();
+            // Option D: show/hide dot badge instead of ring
+            const dot = document.getElementById('rm-ell-auto-dot');
+            if (dot) dot.style.display = st.autoRemove ? 'block' : 'none';
             btn.toggleClass('rm-ell-auto-active', !!st.autoRemove);
         },
 
@@ -368,11 +371,14 @@
                     </div>`;
             }).join('');
 
+            const st = Core.getSettings();
+            const dotVisible = st.autoRemove ? '' : 'display:none;';
             return `
                 <div id="rm-ell-quick-btn-wrapper" class="rm-ell-quick-btn-wrapper">
                     <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" role="button"
                          aria-label="Text Cleaner: tap to clean, hold for options">
-                        <span class="rm-ell-quick-btn-emoji" aria-hidden="true">📝</span>
+                        <i class="fa-solid fa-eraser" aria-hidden="true"></i>
+                        <span id="rm-ell-auto-dot" class="rm-ell-auto-dot" style="${dotVisible}"></span>
                     </div>
                     <div id="rm-ell-popup-menu" class="rm-ell-popup-menu">
                         <div class="rm-ell-popup-header">
