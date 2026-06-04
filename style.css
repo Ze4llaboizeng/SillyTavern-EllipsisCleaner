@@ -1,3 +1,13 @@
+/* ============================================================
+   Remove Ellipsis Extension — Stylesheet
+   ============================================================ */
+
+/* CSS variable for button size — change once, applies everywhere */
+:root {
+    --rm-ell-btn-size: 32px;
+    --rm-ell-btn-size-mobile: 30px;
+}
+
 #remove-ellipsis-settings {
     width: 100%;
     margin-top: 10px;
@@ -12,26 +22,28 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    align-self: center;       /* ไม่ stretch ตามความสูงของ send_form */
+    align-self: center;
     flex: 0 0 auto;
     height: auto;
     vertical-align: middle;
 }
 
 #rm-ell-quick-btn {
-    /* ทรงกลมแน่นอน — ใช้ aspect-ratio + flex-shrink:0 กันถูกบีบเป็นวงรี */
     display: inline-flex;
     align-items: center;
     justify-content: center;
     box-sizing: border-box;
-    width: 32px;
-    height: 32px;
-    min-width: 32px;
-    min-height: 32px;
-    max-width: 32px;
-    max-height: 32px;
+
+    /* ใช้ CSS variable — แก้ที่เดียว */
+    width: var(--rm-ell-btn-size);
+    height: var(--rm-ell-btn-size);
+    min-width: var(--rm-ell-btn-size);
+    min-height: var(--rm-ell-btn-size);
+    max-width: var(--rm-ell-btn-size);
+    max-height: var(--rm-ell-btn-size);
+    flex: 0 0 var(--rm-ell-btn-size);
     aspect-ratio: 1 / 1;
-    flex: 0 0 32px;
+
     padding: 0;
     border-radius: 50%;
     background: transparent;
@@ -39,15 +51,11 @@
     border: none;
     box-shadow: none;
     cursor: pointer;
-    /* transition เฉพาะ box-shadow + background — ไม่แตะ transform เพื่อกันปุ่มลอยล้ำแถบพิมพ์ */
     transition: background 0.15s ease, box-shadow 0.2s ease, transform 0.1s ease;
-    
-    /* แก้ไขตรงนี้: เพิ่ม margin ขวาให้ห่างจากปุ่มส่งข้อความ */
-    margin: 0 12px 0 6px; 
-    
+    margin: 0 12px 0 6px;
     user-select: none;
     -webkit-user-select: none;
-    -webkit-touch-callout: none; /* ป้องกันแถบเมนูในมือถือเด้งเวลากดค้าง */
+    -webkit-touch-callout: none;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
     line-height: 1;
@@ -55,7 +63,6 @@
     vertical-align: middle;
 }
 
-/* ไอคอน emoji ภายในปุ่ม — ทำให้แสดงผลพอดี ไม่ถูกบีบอัด */
 #rm-ell-quick-btn .rm-ell-quick-btn-emoji {
     display: inline-flex;
     align-items: center;
@@ -64,17 +71,13 @@
     height: 100%;
     font-size: 18px;
     line-height: 1;
-    /* fallback fonts สำหรับ emoji ทุก platform */
     font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji",
                  "Segoe UI Symbol", "Twemoji Mozilla", sans-serif;
-    /* ปิด font-feature เพื่อป้องกัน emoji ถูกแสดงเป็น text variant */
     font-variant-emoji: emoji;
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
-    /* ไม่ใช้ translateY กับ emoji เพราะทำให้ดูเอียงลง — ใช้ flex center พอ */
 }
 
-/* hover: แค่เปลี่ยนพื้นหลังเบา ๆ ไม่เลื่อนตำแหน่งปุ่ม (กันล้ำแถบพิมพ์) */
 #rm-ell-quick-btn:hover {
     background: var(--white30a, rgba(255, 255, 255, 0.08));
     transform: none;
@@ -84,8 +87,6 @@
     transform: scale(0.92);
 }
 
-/* เมื่อ Auto Remove เปิดอยู่ — แสดงด้วย ring สีเขียวรอบ emoji แทนพื้นหลังเต็ม
-   ใช้ inset box-shadow เพื่อไม่ขยายขนาดปุ่ม (กันออกนอกขอบแถบพิมพ์) */
 #rm-ell-quick-btn.rm-ell-auto-active {
     background: transparent !important;
     color: inherit !important;
@@ -93,19 +94,15 @@
     box-shadow: inset 0 0 0 2px var(--green-50, #3c8d51);
 }
 
-/* แสดงผลตอนกำลังกดค้าง (long-press progress) — ใช้ inset เช่นกัน */
 #rm-ell-quick-btn.rm-ell-pressing {
     box-shadow: inset 0 0 0 2px var(--SmartThemeQuoteColor, #4a90e2);
     transform: scale(0.95);
 }
 
-
-
 /* ============================================================
-   POPUP MENU (เมนูเปิดด้วยการกดค้าง)
+   POPUP MENU
    ============================================================ */
 .rm-ell-popup-menu {
-    /* ซ่อนเป็นค่าเริ่มต้น */
     display: none;
     position: absolute;
     bottom: calc(100% + 10px);
@@ -119,7 +116,6 @@
     box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
     padding: 6px;
     z-index: 10000;
-    /* ขนาดพื้นฐาน (PC) */
     font-size: 13px;
     line-height: 1.4;
     backdrop-filter: blur(8px);
@@ -197,89 +193,33 @@
     flex-shrink: 0;
 }
 
-.rm-ell-toggle-status.on {
-    background: var(--green-50, #3c8d51);
-    color: #fff;
+.rm-ell-toggle-status.on  { background: var(--green-50, #3c8d51); color: #fff; }
+.rm-ell-toggle-status.off { background: var(--grey-50, #555);     color: #ccc; }
+
+/* ============================================================
+   PER-MESSAGE CLEAN BUTTON
+   ============================================================ */
+.rm-ell-msg-clean-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.15s ease;
+    cursor: pointer;
+    color: var(--text-main, #aaa);
 }
 
-.rm-ell-toggle-status.off {
-    background: var(--grey-50, #555);
-    color: #ccc;
+.rm-ell-msg-clean-btn:hover {
+    color: var(--SmartThemeQuoteColor, #8ab4f8);
 }
 
-/* ------------------------------------------------------------
-   Responsive: Tablet
-   ------------------------------------------------------------ */
-@media (max-width: 900px) {
-    .rm-ell-popup-menu {
-        font-size: 14px;
-        min-width: 240px;
-    }
-    .rm-ell-popup-item {
-        padding: 9px 12px;
-    }
-}
-
-/* ------------------------------------------------------------
-   Responsive: Mobile
-   ------------------------------------------------------------ */
-@media (max-width: 600px) {
-    #rm-ell-quick-btn {
-        width: 30px;
-        height: 30px;
-        min-width: 30px;
-        min-height: 30px;
-        max-width: 30px;
-        max-height: 30px;
-        flex: 0 0 30px;
-        font-size: 15px;
-        
-        /* แก้ไขตรงนี้สำหรับมือถือ: เพิ่ม margin ขวาให้ห่างจากปุ่มส่งข้อความ */
-        margin: 0 8px 0 4px; 
-    }
-    #rm-ell-quick-btn .rm-ell-quick-btn-emoji {
-        font-size: 16px;
-    }
-    .rm-ell-popup-menu {
-        font-size: 15px;
-        min-width: 220px;
-        max-width: calc(100vw - 20px);
-        right: 0;
-        padding: 5px;
-    }
-    .rm-ell-popup-header {
-        padding: 9px 12px;
-        font-size: 1em;
-    }
-    .rm-ell-popup-item {
-        padding: 11px 12px; /* แตะง่ายขึ้นบนมือถือ */
-        gap: 8px;
-    }
-    .rm-ell-popup-item i {
-        width: 18px;
-        font-size: 0.95em;
-    }
-    .rm-ell-toggle-status {
-        font-size: 0.72em;
-        padding: 3px 8px;
-    }
-}
-
-/* ------------------------------------------------------------
-   Responsive: Mobile เล็กมาก (< 380px)
-   ------------------------------------------------------------ */
-@media (max-width: 380px) {
-    .rm-ell-popup-menu {
-        font-size: 14px;
-        min-width: 190px;
-    }
-    .rm-ell-popup-item {
-        padding: 10px;
-    }
+.mes:hover .rm-ell-msg-clean-btn,
+.mes.selected .rm-ell-msg-clean-btn {
+    opacity: 1;
 }
 
 /* ============================================================
-   HEADER STATUS BADGE (ใน drawer settings)
+   HEADER STATUS BADGE
    ============================================================ */
 .rm-ell-header-status {
     display: inline-block;
@@ -292,15 +232,8 @@
     vertical-align: middle;
 }
 
-.rm-ell-header-status.on {
-    background: var(--green-50, #3c8d51);
-    color: #fff;
-}
-
-.rm-ell-header-status.off {
-    background: var(--grey-50, #555);
-    color: #ccc;
-}
+.rm-ell-header-status.on  { background: var(--green-50, #3c8d51); color: #fff; }
+.rm-ell-header-status.off { background: var(--grey-50, #555);     color: #ccc; }
 
 /* ============================================================
    SETTINGS PANEL
@@ -319,14 +252,93 @@
     opacity: 0.5;
 }
 
-/* highlight effect เมื่อ scroll ไปที่ settings จากปุ่ม More Settings */
+/* Disabled button state */
+.menu_button.rm-ell-btn-disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
+/* Highlight on scroll-to */
 #remove-ellipsis-settings.rm-ell-highlight > .inline-drawer {
     animation: rmEllHighlight 1.5s ease;
     border-radius: 8px;
 }
 
 @keyframes rmEllHighlight {
-    0%   { box-shadow: 0 0 0 0 var(--SmartThemeQuoteColor, #4a90e2); }
+    0%   { box-shadow: 0 0 0 0   var(--SmartThemeQuoteColor, #4a90e2); }
     30%  { box-shadow: 0 0 0 4px var(--SmartThemeQuoteColor, #4a90e2); }
-    100% { box-shadow: 0 0 0 0 rgba(74, 144, 226, 0); }
+    100% { box-shadow: 0 0 0 0   rgba(74, 144, 226, 0); }
+}
+
+/* ============================================================
+   Responsive: Tablet
+   ============================================================ */
+@media (max-width: 900px) {
+    .rm-ell-popup-menu {
+        font-size: 14px;
+        min-width: 240px;
+    }
+    .rm-ell-popup-item {
+        padding: 9px 12px;
+    }
+}
+
+/* ============================================================
+   Responsive: Mobile
+   ============================================================ */
+@media (max-width: 600px) {
+    :root {
+        --rm-ell-btn-size: var(--rm-ell-btn-size-mobile);
+    }
+
+    #rm-ell-quick-btn {
+        font-size: 15px;
+        margin: 0 8px 0 4px;
+    }
+
+    #rm-ell-quick-btn .rm-ell-quick-btn-emoji {
+        font-size: 16px;
+    }
+
+    .rm-ell-popup-menu {
+        font-size: 15px;
+        min-width: 220px;
+        max-width: calc(100vw - 20px);
+        right: 0;
+        padding: 5px;
+    }
+
+    .rm-ell-popup-header {
+        padding: 9px 12px;
+        font-size: 1em;
+    }
+
+    .rm-ell-popup-item {
+        padding: 11px 12px;
+        gap: 8px;
+    }
+
+    .rm-ell-popup-item i {
+        width: 18px;
+        font-size: 0.95em;
+    }
+
+    .rm-ell-toggle-status {
+        font-size: 0.72em;
+        padding: 3px 8px;
+    }
+}
+
+/* ============================================================
+   Responsive: Small mobile (< 380px)
+   ============================================================ */
+@media (max-width: 380px) {
+    .rm-ell-popup-menu {
+        font-size: 14px;
+        min-width: 190px;
+    }
+    .rm-ell-popup-item {
+        padding: 10px;
+    }
 }
