@@ -481,10 +481,18 @@
         // ----------------------------------------------------------------
         injectQuickButton() {
             if (typeof $ === 'undefined') return;
-            if ($('#rm-ell-quick-btn').length > 0) return;
+
+            // Self-heal: if one or more wrappers already exist, keep the first
+            // and remove any duplicates, then bail out (button is already present).
+            const existingWrappers = $('#rm-ell-quick-btn-wrapper');
+            if (existingWrappers.length > 0) {
+                if (existingWrappers.length > 1) existingWrappers.slice(1).remove();
+                return;
+            }
 
             const sendForm = $('#send_form');
             if (!sendForm.length) return;
+
 
             const wrapper = $(this._buildPopupHTML());
             const sendBut = $('#send_but');
@@ -899,8 +907,11 @@
                 isRunning = true;
                 try {
                     if (!document.getElementById('remove-ellipsis-settings'))  UI.injectSettings();
-                    if (!document.getElementById('rm-ell-quick-btn'))          UI.injectQuickButton();
+                    // Always call: injectQuickButton self-heals (removes duplicate
+                    // wrappers) and bails out cheaply when exactly one exists.
+                    UI.injectQuickButton();
                     App.injectMessageButtons();
+
                     UI.updateDrawerHeaderStatus();
                 } catch (err) {
                     console.error('[CleanerExt] observer error:', err);
