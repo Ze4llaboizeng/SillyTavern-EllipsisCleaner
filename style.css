@@ -75,6 +75,16 @@
     pointer-events: none;
 }
 
+/* Emoji icon variant */
+#rm-ell-quick-btn .rm-ell-quick-emoji {
+    font-size: 16px;
+    line-height: 1;
+    pointer-events: none;
+    /* keep emoji full-color regardless of theme text color */
+    filter: none;
+}
+
+
 #rm-ell-quick-btn:hover {
     background: var(--white30a, rgba(128,128,128,0.1));
     color: var(--text-main, inherit);
@@ -348,6 +358,10 @@
 
     #rm-ell-quick-btn i {
         font-size: 14px;
+    }
+
+    #rm-ell-quick-btn .rm-ell-quick-emoji {
+        font-size: 15px;
     }
 
     .rm-ell-auto-dot {
