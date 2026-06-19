@@ -19,16 +19,26 @@
    ============================================================ */
 #rm-ell-quick-btn-wrapper {
     position: relative;
-    display: inline-flex;
+    /* บางธีมตั้ง display/visibility กับลูกของ #send_form ทำให้ปุ่มหาย
+       จึงบังคับให้แสดงผลเสมอด้วย !important */
+    display: inline-flex !important;
+    visibility: visible !important;
+    opacity: 1 !important;
     align-items: center;
     justify-content: center;
     align-self: center;
     flex: 0 0 auto;
-    height: auto;
+    /* บังคับขนาดขั้นต่ำกันธีมบีบ wrapper จนยุบเหลือ 0 */
+    height: var(--rm-ell-btn-size);
+    min-height: var(--rm-ell-btn-size);
+    min-width: var(--rm-ell-btn-size);
     vertical-align: middle;
+    overflow: visible;
+    pointer-events: auto;
     /* เว้นระยะจากปุ่มส่ง */
     margin: 0 10px 0 4px;
 }
+
 
 #rm-ell-quick-btn {
     position: relative;
