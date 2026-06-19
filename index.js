@@ -394,7 +394,11 @@
                 <div id="rm-ell-quick-btn-wrapper" class="rm-ell-quick-btn-wrapper">
                     <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" role="button"
                          aria-label="Text Cleaner: tap to clean, hold for options">
+<<<<<<< HEAD
                         <span class="rm-ell-quick-emoji" aria-hidden="true">🧹</span>
+=======
+                        <i class="fa-solid fa-broom" aria-hidden="true"></i>
+>>>>>>> 5a2da7f12966ae599e5f0ec99b3f26643ce2737a
                         <span id="rm-ell-auto-dot" class="rm-ell-auto-dot" style="${dotVisible}"></span>
                     </div>
                     <div id="rm-ell-popup-menu" class="rm-ell-popup-menu">
