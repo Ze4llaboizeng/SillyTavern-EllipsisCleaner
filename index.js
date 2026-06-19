@@ -394,7 +394,7 @@
                 <div id="rm-ell-quick-btn-wrapper" class="rm-ell-quick-btn-wrapper">
                     <div id="rm-ell-quick-btn" class="rm-ell-quick-btn" role="button"
                          aria-label="Text Cleaner: tap to clean, hold for options">
-                        <i class="fa-solid fa-eraser" aria-hidden="true"></i>
+                        <i class="fa-solid fa-broom" aria-hidden="true"></i>
                         <span id="rm-ell-auto-dot" class="rm-ell-auto-dot" style="${dotVisible}"></span>
                     </div>
                     <div id="rm-ell-popup-menu" class="rm-ell-popup-menu">
