@@ -816,14 +816,19 @@
             $('.mes').each((_, el) => {
                 const mes = $(el);
                 if (mes.find('.rm-ell-msg-clean-btn').length > 0) return;
-                const extraButtons = mes.find('.extraMesButtons, .mes_buttons');
-                if (!extraButtons.length) return;
-                extraButtons.prepend(
+                // ".extraMesButtons" is nested inside ".mes_buttons", so selecting
+                // both would prepend to two containers at once (duplicate button).
+                // Pick a single target: prefer ".extraMesButtons", fall back to ".mes_buttons".
+                let target = mes.find('.extraMesButtons').first();
+                if (!target.length) target = mes.find('.mes_buttons').first();
+                if (!target.length) return;
+                target.prepend(
                     `<div class="rm-ell-msg-clean-btn mes_button" title="Clean this message">
                         <i class="fa-solid fa-eraser"></i>
                     </div>`
                 );
             });
+
         },
 
         // ----------------------------------------------------------------
